@@ -9,6 +9,14 @@ NC='\033[0m' # No Color
 # Ensure logs directory exists
 mkdir -p logs
 
+# Ensure mcp_servers directory is available
+echo -e "${BLUE}📦 Preparing mcp_servers directory...${NC}"
+if [ -d "mcp_servers" ]; then
+    echo -e "${GREEN}✓ mcp_servers directory found${NC}"
+else
+    echo -e "${YELLOW}⚠️  mcp_servers directory not found${NC}"
+fi
+
 echo -e "${BLUE}🔨 Rebuilding Docker containers...${NC}"
 docker-compose build
 
@@ -27,6 +35,7 @@ if docker-compose ps | grep -q "Up"; then
     echo -e "  📡 API Server:        http://localhost:8000"
     echo -e "  📚 API Documentation: http://localhost:8000/docs"
     echo -e "  🔄 Temporal UI:       http://localhost:8080"
+    echo -e "  🌤️  Forecast MCP:      http://localhost:7778"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "\n${BLUE}💡 View logs with: docker-compose logs -f${NC}"
     echo -e "${BLUE}📁 Application logs are written to: ./logs/${NC}"

@@ -1,0 +1,8 @@
+# MCP Server Requirements
+# FastMCP - Modern Python toolkit for MCP servers and clients
+fastmcp>=2.4.0
+
+# Additional dependencies that might be needed
+pydantic>=2.0.0
+typing-extensions>=4.8.0
+python-dotenv>=1.0.0  # For environment configuration

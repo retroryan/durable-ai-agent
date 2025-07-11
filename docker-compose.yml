@@ -104,6 +104,20 @@ services:
     networks:
       - durable-network
 
+  forecast-mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.forecast
+    container_name: durable-forecast-mcp
+    ports:
+      - "7778:7778"
+    networks:
+      - durable-network
+    volumes:
+      - ./mcp_servers:/app/mcp_servers
+      - ./logs:/app/logs
+    command: python -m mcp_servers.forecast_server
+
 networks:
   durable-network:
     driver: bridge
