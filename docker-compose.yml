@@ -1,0 +1,112 @@
+services:
+  # Database service
+  postgresql:
+    image: postgres:14
+    container_name: durable-postgresql
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - postgresql:/var/lib/postgresql/data
+    networks:
+      - durable-network
+
+  # Temporal services
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    container_name: durable-temporal
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+    depends_on:
+      - postgresql
+    networks:
+      - durable-network
+
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.27
+    container_name: durable-temporal-admin-tools
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks:
+      - durable-network
+
+  temporal-ui:
+    image: temporalio/ui:2.37.2
+    container_name: durable-temporal-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8080
+    depends_on:
+      - temporal
+    networks:
+      - durable-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: durable-ai-agent-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - temporal
+    networks:
+      - durable-network
+    env_file:
+      - .env
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: durable-ai-agent-worker
+    depends_on:
+      - temporal
+    env_file:
+      - .env
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    command: python worker/main.py
+    networks:
+      - durable-network
+    volumes:
+      - ./logs:/app/logs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: durable-ai-agent-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - durable-network
+
+networks:
+  durable-network:
+    driver: bridge
+
+volumes:
+  postgresql:

@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "durable-ai-agent"
+version = "0.1.0"
+description = "Simplified Durable AI Agent with Temporal"
+license = "MIT"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [
+    { include = "api" },
+    { include = "activities" },
+    { include = "models" },
+    { include = "shared" },
+    { include = "tools" },
+    { include = "workflows" },
+    { include = "worker" },
+]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/yourusername/durable-ai-agent/issues"
+
+[tool.poe.tasks]
+format = [{cmd = "black ."}, {cmd = "isort ."}]
+lint = [{cmd = "black --check ."}, {cmd = "isort --check-only ."}, {ref = "lint-types" }]
+lint-types = "mypy --check-untyped-defs --namespace-packages ."
+test = "pytest"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+temporalio = "^1.8.0"
+fastapi = "^0.115.6"
+uvicorn = "^0.34.0"
+python-dotenv = "^1.0.1"
+pydantic = "^2.0.0"
+pydantic-settings = "^2.0.0"
+httpx = "^0.27.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.2"
+pytest-asyncio = "^0.26.0"
+black = "^23.7"
+isort = "^5.12"
+mypy = "^1.0"
+poethepoet = "^0.31.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "integration_tests"]
+asyncio_mode = "auto"
+markers = [
+    "api: marks tests that require the API server to be running",
+    "workflow: marks tests that test workflow functionality",
+    "slow: marks tests that take longer to run",
+]
