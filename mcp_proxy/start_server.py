@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Simple script to start the MCP proxy server."""
 
-import sys
 import os
+import sys
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mcp_proxy.main import app
 import uvicorn
+
+from mcp_proxy.main import app
 
 if __name__ == "__main__":
     port = int(os.getenv("MCP_PROXY_PORT", 8000))

@@ -531,14 +531,14 @@ python mcp_proxy/test_simple_proxy.py
 ```
 
 This will:
-- Connect to the proxy at http://localhost:8001/mcp
+- Connect to the proxy at http://localhost:8000/mcp
 - List all available tools (8 tools from 3 services)
 - Test calling tools from each service
 - Display the results
 
 **Expected output**:
 ```
-Connecting to proxy at http://localhost:8001/mcp...
+Connecting to proxy at http://localhost:8000/mcp...
 ✅ Connected to proxy!
 
 Found 8 tools:
@@ -559,17 +559,25 @@ Historical result: {...}
 
 ### Docker Testing
 
-**Build and run with Docker**:
+**Simple scripts for Docker operations**:
 ```bash
-# Build the proxy container
-docker build -f mcp_proxy/Dockerfile -t mcp-proxy .
+# Navigate to the proxy directory
+cd mcp_proxy/
 
-# Run the container
-docker run -p 8000:8000 mcp-proxy
+# Build and run the Docker container
+./run_docker.sh
 
-# Test from another terminal
-python mcp_proxy/test_simple_proxy.py
+# Test the running container
+./test_docker.sh
+
+# Stop and remove the container
+./stop_docker.sh
 ```
+
+The scripts handle:
+- `run_docker.sh` - Builds the image and starts the container
+- `test_docker.sh` - Tests the proxy with curl and the Python test script
+- `stop_docker.sh` - Stops and removes the container
 
 ### Manual Testing with curl
 

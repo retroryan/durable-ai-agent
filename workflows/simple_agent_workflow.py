@@ -59,7 +59,9 @@ class SimpleAgentWorkflow:
         # Handle different activity response formats
         return Response(
             message=activity_result["message"],
-            event_count=activity_result.get("event_count", 0),  # Default to 0 for non-event activities
+            event_count=activity_result.get(
+                "event_count", 0
+            ),  # Default to 0 for non-event activities
             query_count=self.query_count,
         )
 

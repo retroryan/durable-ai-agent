@@ -15,11 +15,11 @@ server = FastMCP("ForecastWeatherService")
 def get_forecast(location: str, days: int = 5) -> str:
     """
     Get weather forecast for a location.
-    
+
     Args:
         location: City or location name
         days: Number of days to forecast (default: 5)
-    
+
     Returns:
         Weather forecast description
     """
@@ -31,11 +31,11 @@ def get_forecast(location: str, days: int = 5) -> str:
 def get_hourly_forecast(location: str, hours: int = 24) -> str:
     """
     Get hourly weather forecast.
-    
+
     Args:
         location: City or location name
         hours: Number of hours to forecast (default: 24)
-    
+
     Returns:
         Hourly forecast description
     """

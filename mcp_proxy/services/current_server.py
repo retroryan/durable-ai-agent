@@ -15,10 +15,10 @@ server = FastMCP("CurrentWeatherService")
 def get_current_weather(location: str) -> str:
     """
     Get current weather for a location.
-    
+
     Args:
         location: City or location name
-    
+
     Returns:
         Current weather description
     """
@@ -30,10 +30,10 @@ def get_current_weather(location: str) -> str:
 def get_temperature(location: str) -> str:
     """
     Get current temperature for a location.
-    
+
     Args:
         location: City or location name
-    
+
     Returns:
         Current temperature
     """
@@ -44,14 +44,16 @@ def get_temperature(location: str) -> str:
 def get_conditions(location: str) -> str:
     """
     Get current weather conditions.
-    
+
     Args:
         location: City or location name
-    
+
     Returns:
         Weather conditions description
     """
-    return f"Conditions in {location}: Partly cloudy, Wind: 10 km/h NW, Visibility: 10 km"
+    return (
+        f"Conditions in {location}: Partly cloudy, Wind: 10 km/h NW, Visibility: 10 km"
+    )
 
 
 if __name__ == "__main__":
