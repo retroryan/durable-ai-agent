@@ -1,0 +1,11 @@
+# Simple Docker Compose for MCP Proxy
+version: '3.8'
+
+services:
+  mcp-proxy:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - MCP_PROXY_PORT=8000
