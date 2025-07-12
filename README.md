@@ -506,3 +506,116 @@ if __name__ == "__main__":
 ```
 
 The integration tests ensure the entire system works correctly end-to-end, complementing the unit tests that test individual components in isolation.
+
+## Proxy Testing
+
+The MCP proxy server provides a unified endpoint for multiple weather services. Here's how to run and test it.
+
+### Running the Proxy
+
+**Start the proxy server**:
+```bash
+# From the project root directory
+python -m mcp_proxy.simple_proxy
+
+# The proxy will start on http://localhost:8000/mcp
+# (Use port 8001 if 8000 is in use)
+```
+
+### Testing the Proxy
+
+**Quick test script**:
+```bash
+# Run the simple test script
+python mcp_proxy/test_simple_proxy.py
+```
+
+This will:
+- Connect to the proxy at http://localhost:8001/mcp
+- List all available tools (8 tools from 3 services)
+- Test calling tools from each service
+- Display the results
+
+**Expected output**:
+```
+Connecting to proxy at http://localhost:8001/mcp...
+✅ Connected to proxy!
+
+Found 8 tools:
+  - forecast_get_forecast: Get weather forecast
+  - forecast_get_hourly_forecast: Get hourly weather forecast
+  - current_get_current_weather: Get current weather
+  - current_get_temperature: Get current temperature
+  - current_get_conditions: Get current conditions
+  - historical_get_historical_weather: Get historical weather
+  - historical_get_climate_average: Get climate average
+  - historical_get_weather_records: Get weather records
+
+Testing tool calls...
+Current weather result: {...}
+Forecast result: {...}
+Historical result: {...}
+```
+
+### Docker Testing
+
+**Build and run with Docker**:
+```bash
+# Build the proxy container
+docker build -f mcp_proxy/Dockerfile -t mcp-proxy .
+
+# Run the container
+docker run -p 8000:8000 mcp-proxy
+
+# Test from another terminal
+python mcp_proxy/test_simple_proxy.py
+```
+
+### Manual Testing with curl
+
+**List all tools**:
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+```
+
+**Call a specific tool**:
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "forecast_get_forecast",
+      "arguments": {"location": "Sydney", "days": 3}
+    },
+    "id": 2
+  }'
+```
+
+### Using with MCP Client
+
+```python
+from fastmcp.client import Client
+
+async with Client("http://localhost:8000/mcp") as client:
+    # List tools
+    tools = await client.list_tools()
+    
+    # Call a tool
+    result = await client.call_tool(
+        "current_get_current_weather",
+        {"location": "Melbourne"}
+    )
+```
+
+### Proxy Architecture
+
+The proxy uses FastMCP's built-in features:
+- `FastMCP.mount()` to combine multiple services
+- `proxy.run(transport="streamable-http")` for HTTP transport
+- Automatic session management and protocol handling
+
+This simple approach reduces complexity from hundreds of lines to about 20 lines of code while providing full MCP protocol support.

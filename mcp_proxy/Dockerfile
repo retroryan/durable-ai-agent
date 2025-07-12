@@ -13,5 +13,5 @@ COPY mcp_proxy/ ./mcp_proxy/
 # Expose port
 EXPOSE 8000
 
-# Run the proxy server
-CMD ["python", "-m", "mcp_proxy.main"]
+# Run the simple proxy server
+CMD ["python", "-m", "mcp_proxy.simple_proxy"]
