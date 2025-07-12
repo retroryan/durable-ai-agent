@@ -10,6 +10,31 @@ This project is a minimal implementation that:
 - Maintains state across workflow restarts
 - Provides a clean foundation for extension
 
+## Quick Start
+
+### Prerequisites
+- Docker and Docker Compose installed
+- Python 3.10+ (for local development)
+- Node.js 20+ (for frontend development)
+- Poetry (for Python dependency management)
+
+### Setting up Poetry
+
+1. **Install Poetry** (if not already installed):
+   ```bash
+   curl -sSL https://install.python-poetry.org | python3 -
+   ```
+
+2. **Install project dependencies**:
+   ```bash
+   poetry install
+   ```
+
+3. **Activate the virtual environment**:
+   ```bash
+   poetry shell
+   ```
+
 ## Architecture
 
 The system consists of:
@@ -18,41 +43,20 @@ The system consists of:
 - **API**: FastAPI server for workflow management
 - **Frontend**: React UI for chat interaction
 
-## Current Status
-
-✅ **Phase 1**: Infrastructure setup complete
-✅ **Phase 2**: Core backend components complete
-✅ **Phase 3**: API server complete
-✅ **Phase 4**: Frontend UI complete
-⬜ **Phase 5**: Integration testing (not started)
-⬜ **Phase 6**: MCP integration (not started)
-
-## Quick Start
-
-### Prerequisites
-- Docker and Docker Compose installed
-- Python 3.11+ (for local development)
-- Node.js 20+ (for frontend development)
 
 ### Running the Complete System
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd durable-ai-agent
-   ```
-
-2. **Set up environment**
+1. **Set up environment**
    ```bash
    cp .env.example .env
    ```
 
-3. **Start all services with Docker Compose**
+2. **Start all services with Docker Compose**
    ```bash
    docker-compose up
    ```
 
-4. **Access the applications**
+3. **Access the applications**
    - 🌐 **Frontend (Chat UI)**: http://localhost:3000
    - 📡 **API Server**: http://localhost:8000
    - 📚 **API Documentation**: http://localhost:8000/docs
@@ -102,6 +106,8 @@ npm run dev
 
 ## Running Tests
 
+The project includes comprehensive test suites covering unit tests, API integration tests, and MCP integration tests.
+
 ### Prerequisites
 1. Install Poetry: `pip install poetry`
 2. Install dependencies: `poetry install`
@@ -116,22 +122,148 @@ poetry run pytest tests/
 poetry run pytest tests/ -v
 ```
 
-### Integration Tests (API Server Tests)
-Integration tests require the full stack to be running:
+### Integration Tests
 
+The project has two types of integration tests:
+
+#### 1. API Integration Tests (pytest-based)
+These test the API endpoints and workflow functionality through HTTP requests.
+
+#### 2. MCP Integration Tests (direct Python programs)
+These test MCP client functionality and are **intentionally direct Python programs (not pytest)** to avoid complexity and issues with async test runners and connection pooling.
+
+### Running All Integration Tests
+
+**Quick Start - Run Everything**:
 ```bash
-# Start services (in separate terminals or use docker-compose)
-docker-compose up
+# 1. Start all services
+docker-compose up -d
 
-# Run integration tests
-poetry run pytest integration_tests/ -v
+# 2. Run all integration tests (API + MCP)
+python integration_tests/run_integration_tests.py
 
-# Run specific test categories
-poetry run pytest integration_tests/ -m api -v
-poetry run pytest integration_tests/ -m workflow -v
+# 3. Clean up
+docker-compose down
 ```
 
-### Test Coverage
+**Integration Test Runner Options**:
+```bash
+# Run all tests (API + MCP)
+python integration_tests/run_integration_tests.py
+
+# Skip HTTP-based MCP tests (stdio only)
+python integration_tests/run_integration_tests.py --no-http
+
+# Skip API tests (MCP only)
+python integration_tests/run_integration_tests.py --no-api
+
+# Run only MCP tests
+python integration_tests/run_integration_tests.py --mcp-only
+```
+
+### Running Individual Test Suites
+
+#### API Integration Tests (pytest-based)
+**Prerequisites**: Full stack must be running (`docker-compose up`)
+
+```bash
+# Run all API integration tests
+poetry run pytest integration_tests/ -v
+
+# Run specific test files
+poetry run pytest integration_tests/test_api_endpoints.py -v
+poetry run pytest integration_tests/test_workflow_integration.py -v
+
+# Run by test category
+poetry run pytest integration_tests/ -m api -v
+poetry run pytest integration_tests/ -m workflow -v
+
+# Run with custom API URL
+API_URL=http://localhost:8001 poetry run pytest integration_tests/ -v
+```
+
+**API Test Coverage**:
+- ✅ Health and root endpoints
+- ✅ Chat endpoint workflow creation
+- ✅ Workflow status and query endpoints
+- ✅ Error handling (404, 422 responses)
+- ✅ Workflow lifecycle management
+- ✅ Query count persistence
+- ✅ Multiple workflow isolation
+- ✅ Concurrent workflow execution
+
+#### MCP Integration Tests (direct Python programs)
+
+**Why direct Python programs?**
+- Pytest's async handling conflicts with MCP client event loops
+- Connection pooling issues when running multiple tests
+- Simpler debugging and clearer error messages
+- Direct control over test execution and cleanup
+
+**Running Individual MCP Tests**:
+```bash
+# Run individual tests directly (each loads .env independently)
+python integration_tests/test_stdio_client.py
+python integration_tests/test_http_client.py  # Requires HTTP server running
+```
+
+**MCP Test Coverage**:
+- ✅ Stdio client connection and tool invocation
+- ✅ HTTP client connection and tool invocation
+- ✅ Connection reuse and cleanup
+- ✅ Multiple tool invocations
+- ✅ Environment configuration loading
+
+### Environment Configuration
+
+All tests load configuration from the `.env` file. Each test (both pytest and direct Python) loads the `.env` file independently, so they can be run separately:
+
+```bash
+# API Configuration
+API_URL=http://localhost:8000
+
+# MCP Server Configuration
+MCP_FORECAST_SERVER_HOST=localhost
+MCP_FORECAST_SERVER_PORT=7778
+MCP_FORECAST_SERVER_URL=http://localhost:7778/mcp
+```
+
+### Running All Tests
+
+**Complete Test Suite**:
+```bash
+# 1. Start services
+docker-compose up -d
+
+# 2. Run unit tests
+poetry run pytest tests/ -v
+
+# 3. Run all integration tests (API + MCP)
+python integration_tests/run_integration_tests.py
+
+# 4. Clean up
+docker-compose down
+```
+
+**Alternative - Run Test Types Separately**:
+```bash
+# 1. Start services
+docker-compose up -d
+
+# 2. Run unit tests
+poetry run pytest tests/ -v
+
+# 3. Run API integration tests
+poetry run pytest integration_tests/ -v
+
+# 4. Run MCP integration tests
+python integration_tests/run_integration_tests.py --mcp-only
+
+# 5. Clean up
+docker-compose down
+```
+
+### Test Results Summary
 
 **Unit Tests** (`tests/`):
 - ✅ Basic workflow execution
@@ -139,18 +271,35 @@ poetry run pytest integration_tests/ -m workflow -v
 - ✅ Workflow ID handling
 - ✅ Activity execution
 
-**Integration Tests** (`integration_tests/`):
-- ✅ API endpoint testing
-- ✅ Workflow creation and execution via API
-- ✅ Concurrent workflow handling
+**API Integration Tests** (`integration_tests/` - pytest):
+- ✅ 8 API endpoint tests
+- ✅ 7 workflow integration tests
 - ✅ Error handling and validation
-- ✅ Query and status endpoints
+- ✅ Concurrent execution testing
+
+**MCP Integration Tests** (`integration_tests/` - direct Python):
+- ✅ Stdio client testing
+- ✅ HTTP client testing
+- ✅ Environment-driven configuration
+- ✅ Connection management
+
+### Troubleshooting Tests
+
+**API Tests Skipped**:
+- Ensure services are running: `docker-compose up`
+- Check API health: `curl http://localhost:8000/health`
+- Verify Temporal UI: http://localhost:8080
+
+**MCP Tests Failing**:
+- For HTTP tests: Ensure MCP server is running on port 7778
+- Check `.env` file configuration
+- Run tests individually for better error messages
 
 All tests are passing! The project successfully demonstrates:
 - Temporal workflow patterns with proper state management
 - Activity execution with retry policies
 - Query handlers for workflow introspection
-- Integration with external tools (find_events)
+- Integration with external tools and MCP servers
 - Full API integration testing
 
 ## API Endpoints
@@ -206,7 +355,10 @@ See `durable-ai-agent.md` for the complete implementation plan and architecture 
 
 ## Integration Tests Details
 
-The project includes comprehensive integration tests that test the API server with actual HTTP requests.
+The project includes comprehensive integration tests with a two-tier approach:
+
+1. **API Integration Tests** (pytest-based) - Test API endpoints with HTTP requests
+2. **MCP Integration Tests** (direct Python programs) - Test MCP client functionality
 
 ### Integration Test Structure
 
@@ -217,11 +369,14 @@ integration_tests/
 ├── utils/                 # Test utilities
 │   ├── api_client.py      # HTTP client wrapper for API calls
 │   └── test_helpers.py    # Assertion helpers and utilities
-├── test_api_endpoints.py  # Tests for API endpoints
-└── test_workflow_integration.py  # Tests for workflow functionality
+├── test_api_endpoints.py  # Tests for API endpoints (pytest)
+├── test_workflow_integration.py  # Tests for workflow functionality (pytest)
+├── test_stdio_client.py  # MCP stdio client test (direct Python)
+├── test_http_client.py   # MCP HTTP client test (direct Python)
+└── run_integration_tests.py  # MCP test runner (direct Python)
 ```
 
-### Test Utilities
+### API Test Utilities (pytest-based)
 
 **DurableAgentAPIClient** (`utils/api_client.py`):
 - Async HTTP client using `httpx`
@@ -237,7 +392,7 @@ integration_tests/
 
 ### Test Coverage
 
-**API Endpoint Tests**:
+**API Endpoint Tests** (pytest):
 - ✅ Health check endpoint (`/health`)
 - ✅ Root endpoint (`/`)
 - ✅ Chat endpoint (`/chat`) - workflow creation
@@ -245,7 +400,7 @@ integration_tests/
 - ✅ Workflow query (`/workflow/{id}/query`)
 - ✅ Error handling (404, 422 responses)
 
-**Workflow Integration Tests**:
+**Workflow Integration Tests** (pytest):
 - ✅ Activity execution verification
 - ✅ Query count state persistence
 - ✅ Multiple workflow isolation
@@ -253,13 +408,21 @@ integration_tests/
 - ✅ Concurrent workflow execution
 - ✅ Response format validation
 
+**MCP Integration Tests** (direct Python):
+- ✅ Stdio client connection and tool invocation
+- ✅ HTTP client connection and tool invocation
+- ✅ Connection reuse and cleanup
+- ✅ Multiple tool invocations
+- ✅ Environment configuration loading
+
 ### Running Integration Tests
 
+**API Tests** (pytest-based):
 ```bash
 # Prerequisites: Start all services
 docker-compose up
 
-# Run all integration tests
+# Run all API integration tests
 poetry run pytest integration_tests/ -v
 
 # Run only API tests
@@ -276,8 +439,22 @@ poetry run pytest integration_tests/ -m workflow -v
 API_URL=http://localhost:8001 poetry run pytest integration_tests/ -v
 ```
 
+**MCP Tests** (direct Python programs):
+```bash
+# Run all MCP integration tests
+python integration_tests/run_integration_tests.py
+
+# Run without HTTP tests (stdio only)
+python integration_tests/run_integration_tests.py --no-http
+
+# Run individual tests
+python integration_tests/test_stdio_client.py
+python integration_tests/test_http_client.py
+```
+
 ### Key Features
 
+**API Tests**:
 - **Async Testing**: All tests use `pytest-asyncio` for async/await support
 - **Fixtures**: Session-scoped API client, fresh workflow IDs, test configuration
 - **Markers**: Tests are marked with `@pytest.mark.api` or `@pytest.mark.workflow`
@@ -285,20 +462,47 @@ API_URL=http://localhost:8001 poetry run pytest integration_tests/ -v
 - **Comprehensive Assertions**: Helper functions for common workflow validations
 - **Error Handling**: Tests verify both success and error scenarios
 
+**MCP Tests**:
+- **Direct Python Programs**: Avoid pytest complexity with async event loops
+- **Environment Configuration**: Each test loads `.env` file independently
+- **Connection Management**: Proper cleanup and reuse testing
+- **Simpler Debugging**: Direct execution with clear error messages
+
 ### Writing New Integration Tests
 
-Example of adding a new integration test:
-
+**API Test Example** (pytest):
 ```python
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_my_feature(api_client):
-    # Make API call
     response = await api_client.chat("Test message")
-    
-    # Use assertion helpers
     WorkflowAssertions.assert_workflow_completed(response)
-    assert "Melbourne" in response["last_response"]["message"]
+```
+
+**MCP Test Example** (direct Python):
+```python
+#!/usr/bin/env python3
+"""Simple MCP test.
+
+This is a direct Python program (not pytest) to avoid complexity and issues
+with async test runners and connection pooling.
+"""
+import asyncio
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file
+project_root = Path(__file__).parent.parent
+load_dotenv(project_root / ".env")
+
+async def test_my_mcp_feature():
+    # Your test code here
+    pass
+
+if __name__ == "__main__":
+    exit_code = asyncio.run(test_my_mcp_feature())
+    sys.exit(exit_code)
 ```
 
 The integration tests ensure the entire system works correctly end-to-end, complementing the unit tests that test individual components in isolation.

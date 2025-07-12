@@ -7,9 +7,11 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from temporalio.client import Client
+import time
 
 from api.services.workflow_service import WorkflowService
 from models.types import Response, WorkflowInput, WorkflowState
@@ -73,6 +75,35 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests for debugging."""
+    start_time = time.time()
+    
+    # Log the incoming request
+    logger.info(f"Incoming request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        logger.info(
+            f"Request completed: {request.method} {request.url} "
+            f"Status: {response.status_code} Time: {process_time:.4f}s"
+        )
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(
+            f"Request failed: {request.method} {request.url} "
+            f"Error: {str(e)} Time: {process_time:.4f}s"
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Internal server error: {str(e)}"}
+        )
 
 # Configure CORS
 app.add_middleware(

@@ -36,6 +36,7 @@ if docker-compose ps | grep -q "Up"; then
     echo -e "  📚 API Documentation: http://localhost:8000/docs"
     echo -e "  🔄 Temporal UI:       http://localhost:8080"
     echo -e "  🌤️  Forecast MCP:      http://localhost:7778"
+    echo -e "  🎨 Frontend:          http://localhost:3000"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "\n${BLUE}💡 View logs with: docker-compose logs -f${NC}"
     echo -e "${BLUE}📁 Application logs are written to: ./logs/${NC}"

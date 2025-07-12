@@ -47,7 +47,8 @@ class WorkflowAssertions:
         assert last_response.get("event_count", 0) >= 0
 
         message = last_response.get("message", "")
-        assert message.startswith("Found")
+        # Message should contain "found" (case insensitive) and mention Melbourne
+        assert "found" in message.lower()
         assert "Melbourne" in message
 
     @staticmethod

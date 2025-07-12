@@ -30,22 +30,36 @@ class SimpleAgentWorkflow:
         # Increment query counter to demonstrate state persistence
         self.query_count += 1
 
-        # Execute the find_events activity
-        activity_result = await workflow.execute_activity(
-            "find_events_activity",
-            args=[user_message, user_name],
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=RetryPolicy(
-                maximum_attempts=3,
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=10),
-            ),
-        )
+        # Route to appropriate activity based on user message content
+        if "weather" in user_message.lower():
+            activity_result = await workflow.execute_activity(
+                "weather_forecast_activity",
+                args=[user_message, user_name],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=1),
+                    maximum_interval=timedelta(seconds=10),
+                ),
+            )
+        else:
+            # Default to events activity (backward compatibility)
+            activity_result = await workflow.execute_activity(
+                "find_events_activity",
+                args=[user_message, user_name],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=1),
+                    maximum_interval=timedelta(seconds=10),
+                ),
+            )
 
         # Return structured response
+        # Handle different activity response formats
         return Response(
             message=activity_result["message"],
-            event_count=activity_result["event_count"],
+            event_count=activity_result.get("event_count", 0),  # Default to 0 for non-event activities
             query_count=self.query_count,
         )
 

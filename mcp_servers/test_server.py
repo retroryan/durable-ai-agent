@@ -2,9 +2,10 @@
 """
 Minimal FastMCP server to test Pydantic model parameters.
 """
+from typing import Optional
+
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
-from typing import Optional
 
 # Initialize server
 server = FastMCP(name="test-server")
@@ -12,6 +13,7 @@ server = FastMCP(name="test-server")
 
 class TestRequest(BaseModel):
     """Simple test request model."""
+
     message: str = Field(..., description="Test message")
     count: int = Field(default=1, description="Repeat count")
 
@@ -22,7 +24,7 @@ async def echo_test(request: TestRequest) -> dict:
     return {
         "message": request.message,
         "count": request.count,
-        "repeated": [request.message] * request.count
+        "repeated": [request.message] * request.count,
     }
 
 
@@ -34,6 +36,7 @@ async def simple_tool(text: str) -> str:
 
 if __name__ == "__main__":
     import os
+
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "7779"))
     print(f"Starting test server on {host}:{port}")

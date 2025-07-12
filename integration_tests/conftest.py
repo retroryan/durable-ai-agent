@@ -2,10 +2,20 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+
+# Load environment variables
+from dotenv import load_dotenv
+
+# Load .env file from project root
+project_root = Path(__file__).parent.parent
+env_path = project_root / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 # Add integration_tests directory to path to import modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from activities import find_events_activity
+from activities import find_events_activity, weather_forecast_activity
 from shared.config import get_settings
 from workflows import SimpleAgentWorkflow
 
@@ -56,12 +56,14 @@ async def main():
         client,
         task_queue=settings.task_queue,
         workflows=[SimpleAgentWorkflow],
-        activities=[find_events_activity],
+        activities=[find_events_activity, weather_forecast_activity],
     )
 
     logger.info(f"Starting worker on task queue: {settings.task_queue}")
     logger.info("Registered workflows: SimpleAgentWorkflow")
-    logger.info("Registered activities: find_events_activity")
+    logger.info(
+        "Registered activities: find_events_activity, weather_forecast_activity"
+    )
 
     # Run the worker
     await worker.run()

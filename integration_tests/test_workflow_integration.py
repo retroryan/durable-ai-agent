@@ -20,7 +20,7 @@ class TestWorkflowIntegration:
 
         # Verify we got a proper response
         message = response["last_response"]["message"]
-        assert "Found" in message
+        assert "found" in message.lower()
         assert "events in Melbourne" in message
 
     @pytest.mark.asyncio

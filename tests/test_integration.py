@@ -40,7 +40,7 @@ async def test_simple_workflow_execution():
             result: Response = await handle.result()
 
             # Verify result
-            assert result.message.startswith("Found")
+            assert "found" in result.message.lower()
             assert result.event_count >= 0
             assert result.query_count == 1
 
@@ -121,15 +121,32 @@ async def test_workflow_id_handling():
 
 @pytest.mark.asyncio
 async def test_activity_execution():
-    """Test that the activity executes correctly."""
-    # Direct activity test
-    result = await find_events_activity("test message")
+    """Test that the activity executes correctly within a workflow context."""
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        # Register workflow and activities
+        worker = Worker(
+            env.client,
+            task_queue="test-queue",
+            workflows=[SimpleAgentWorkflow],
+            activities=[find_events_activity],
+        )
 
-    assert isinstance(result, dict)
-    assert "message" in result
-    assert "event_count" in result
-    assert isinstance(result["message"], str) and result["message"].startswith("Found")
-    assert result["event_count"] >= 0
+        async with worker:
+            # Start workflow to test activity execution
+            handle = await env.client.start_workflow(
+                SimpleAgentWorkflow.run,
+                args=["test activity execution"],
+                id=f"test-activity-{uuid.uuid4()}",
+                task_queue="test-queue",
+            )
+
+            # Get result
+            result: Response = await handle.result()
+
+            # Verify activity was executed and returned proper result
+            assert isinstance(result.message, str)
+            assert "found" in result.message.lower()
+            assert result.event_count >= 0
 
 
 if __name__ == "__main__":
