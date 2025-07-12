@@ -64,7 +64,7 @@ async def proxy_mcp_request(
     Each request gets a fresh session automatically via FastMCP.as_proxy().
 
     Args:
-        service_name: Name of the service (forecast, current, historical)
+        service_name: Name of the service (forecast, agricultural, historical)
         request: MCP protocol request
 
     Returns:
@@ -159,7 +159,7 @@ async def root() -> Dict[str, Any]:
     return {
         "name": "MCP Weather Proxy",
         "version": "1.0.0",
-        "services": ["forecast", "current", "historical"],
+        "services": ["forecast", "agricultural", "historical"],
         "endpoints": {"proxy": "/mcp/{service_name}", "health": "/health"},
     }
 

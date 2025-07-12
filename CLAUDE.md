@@ -101,9 +101,17 @@ poetry run pytest integration_tests/ -m workflow -v
 # Start all services (recommended)
 docker-compose up
 
+# Start with weather proxy (unified MCP services)
+docker-compose --profile weather_proxy up
+
+# Start with individual forecast service
+docker-compose --profile forecast up
+
 # Access services at:
 # - API: http://localhost:8000 (docs at /docs)
 # - Temporal UI: http://localhost:8080
+# - Weather Proxy: http://localhost:8001/mcp
+# - Forecast Service: http://localhost:7778/mcp
 ```
 
 ## Architecture Overview
@@ -113,8 +121,9 @@ The application follows a microservices architecture with these key components:
 1. **API Server** (`api/`) - FastAPI application providing REST endpoints for workflow management
 2. **Worker** (`worker/`) - Processes Temporal workflows and activities
 3. **Workflows** (`workflows/`) - Durable workflow definitions (SimpleAgentWorkflow)
-4. **Activities** (`activities/`) - Atomic units of work (find_events_activity)
+4. **Activities** (`activities/`) - Atomic units of work with MCP integrations
 5. **Tools** (`tools/`) - Reusable tool implementations (find_events)
+6. **MCP Proxy** (`mcp_proxy/`) - Unified proxy server combining multiple weather services
 
 ### Key Design Patterns
 
@@ -129,12 +138,57 @@ The application follows a microservices architecture with these key components:
 - `GET /workflow/{workflow_id}/status` - Check workflow execution status
 - `GET /workflow/{workflow_id}/query` - Query current workflow state
 
+## Activities and MCP Integration
+
+The project includes several Temporal activities that integrate with MCP (Model Context Protocol) servers:
+
+### Available Activities
+
+1. **weather_forecast_activity.py** - Calls forecast MCP server for weather predictions
+2. **weather_historical_activity.py** - Calls historical MCP server for past weather data  
+3. **agricultural_activity.py** - Calls agricultural MCP server for farming conditions
+4. **find_events_activity.py** - Legacy activity for event finding (hardcoded tool)
+
+### MCP Utilities (`activities/mcp_utils.py`)
+
+Common utilities extracted for MCP activities:
+- `get_user_display_name()` - Extract user names for personalization
+- `get_mcp_server_config()` - Environment-based server configuration
+- `call_mcp_tool()` - Generic MCP tool calling with error handling
+- `parse_mcp_result()` - Parse MCP responses consistently
+- `create_error_response()` - Standardized error responses
+
+### MCP Architecture
+
+- **Individual Services**: Separate MCP servers for forecast, historical, agricultural data
+- **Unified Proxy**: Single endpoint (`mcp_proxy`) combining all services
+- **Docker Profiles**: Use `weather_proxy` profile for unified access, `forecast` for individual services
+- **Environment Configuration**: Services configured via environment variables
+
 ## Testing Strategy
 
 - **Unit Tests** (`tests/`) - Test individual components in isolation
 - **Integration Tests** (`integration_tests/`) - Test API endpoints with real Temporal backend
+- **MCP Integration Tests** - Direct Python programs testing MCP client functionality
+- **Proxy Integration Tests** - Test unified MCP proxy (not included in main test runner)
 - Use markers (`-m api`, `-m workflow`) to run specific test categories
 - Integration tests require services to be running via docker-compose
+
+### MCP Proxy Testing
+
+```bash
+# Start weather proxy
+./mcp_proxy/run_docker.sh
+
+# Test proxy functionality
+./mcp_proxy/test_docker.sh
+
+# Run proxy integration tests
+python integration_tests/test_proxy_integration.py
+
+# Stop proxy
+./mcp_proxy/stop_docker.sh
+```
 
 ## Important Notes
 

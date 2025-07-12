@@ -30,9 +30,9 @@ class WeatherServiceManager:
         # In a real implementation, these would be separate processes/servers
 
         try:
-            # Import the service modules
-            from mcp_proxy.services import (
-                current_server,
+            # Import the real service modules from mcp_servers
+            from mcp_servers import (
+                agricultural_server,
                 forecast_server,
                 historical_server,
             )
@@ -44,10 +44,10 @@ class WeatherServiceManager:
             )
             logger.info("Created proxy for forecast service")
 
-            self.proxies["current"] = FastMCP.as_proxy(
-                current_server.server, name="current_proxy"
+            self.proxies["agricultural"] = FastMCP.as_proxy(
+                agricultural_server.server, name="agricultural_proxy"
             )
-            logger.info("Created proxy for current service")
+            logger.info("Created proxy for agricultural service")
 
             self.proxies["historical"] = FastMCP.as_proxy(
                 historical_server.server, name="historical_proxy"
@@ -69,7 +69,7 @@ class WeatherServiceManager:
         """Check health of all services."""
         health_status = {}
 
-        for name in ["forecast", "current", "historical"]:
+        for name in ["forecast", "agricultural", "historical"]:
             # Simple check - just verify proxy exists
             # In a real implementation, you might ping the actual service
             health_status[name] = name in self.proxies

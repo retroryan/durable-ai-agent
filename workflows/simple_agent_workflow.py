@@ -42,6 +42,28 @@ class SimpleAgentWorkflow:
                     maximum_interval=timedelta(seconds=10),
                 ),
             )
+        elif "historical" in user_message.lower():
+            activity_result = await workflow.execute_activity(
+                "weather_historical_activity",
+                args=[user_message, user_name],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=1),
+                    maximum_interval=timedelta(seconds=10),
+                ),
+            )
+        elif "agriculture" in user_message.lower():
+            activity_result = await workflow.execute_activity(
+                "agricultural_activity",
+                args=[user_message, user_name],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=1),
+                    maximum_interval=timedelta(seconds=10),
+                ),
+            )
         else:
             # Default to events activity (backward compatibility)
             activity_result = await workflow.execute_activity(

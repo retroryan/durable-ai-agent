@@ -117,6 +117,23 @@ services:
       - ./mcp_servers:/app/mcp_servers
       - ./logs:/app/logs
     command: python -m mcp_servers.forecast_server
+    profiles:
+      - forecast
+
+  weather-proxy:
+    build:
+      context: .
+      dockerfile: mcp_proxy/Dockerfile
+    container_name: durable-weather-proxy
+    ports:
+      - "8001:8000"
+    networks:
+      - durable-network
+    volumes:
+      - ./logs:/app/logs
+    command: python -m mcp_proxy.simple_proxy
+    profiles:
+      - weather_proxy
 
 networks:
   durable-network:

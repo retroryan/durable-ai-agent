@@ -17,6 +17,16 @@ def get_user_display_name(user_name: str) -> str:
     )
 
 
+def is_proxy_mode_enabled() -> bool:
+    """Check if proxy mode is enabled via environment variable."""
+    return os.getenv("MCP_PROXY_MODE", "false").lower() in ("true", "1", "yes")
+
+
+def get_proxy_url() -> str:
+    """Get proxy URL from environment variable."""
+    return os.getenv("MCP_PROXY_URL", "http://weather-proxy:8000/mcp")
+
+
 def get_mcp_server_config(service_name: str) -> Dict[str, str]:
     """Get MCP server configuration from environment variables.
 
@@ -26,6 +36,12 @@ def get_mcp_server_config(service_name: str) -> Dict[str, str]:
     Returns:
         Dictionary with server configuration
     """
+    # Check if proxy mode is enabled
+    if is_proxy_mode_enabled():
+        proxy_url = get_proxy_url()
+        return {"host": "proxy", "port": "proxy", "url": proxy_url}
+
+    # Direct mode configuration
     service_configs = {
         "forecast": {
             "host_var": "MCP_FORECAST_SERVER_HOST",
@@ -59,6 +75,30 @@ def get_mcp_server_config(service_name: str) -> Dict[str, str]:
     url = os.getenv(config["url_var"], f"http://{host}:{port}/mcp")
 
     return {"host": host, "port": port, "url": url}
+
+
+def get_proxy_tool_name(service_name: str, tool_name: str) -> str:
+    """Get the prefixed tool name for proxy mode.
+
+    Args:
+        service_name: Service name (forecast, historical, agricultural)
+        tool_name: Original tool name
+
+    Returns:
+        Prefixed tool name for proxy mode
+    """
+    # Map service names to proxy prefixes based on proxy architecture
+    service_prefix_map = {
+        "forecast": "forecast",
+        "historical": "historical",
+        "agricultural": "agricultural",
+    }
+
+    if service_name not in service_prefix_map:
+        raise ValueError(f"Unknown service for proxy: {service_name}")
+
+    prefix = service_prefix_map[service_name]
+    return f"{prefix}_{tool_name}"
 
 
 def create_http_server_def(service_name: str, mcp_url: str) -> Dict[str, Any]:
@@ -114,28 +154,37 @@ async def call_mcp_tool(
     config = get_mcp_server_config(service_name)
     mcp_url = config["url"]
 
+    # Determine the actual tool name to call (with prefix for proxy mode)
+    actual_tool_name = tool_name
+    if is_proxy_mode_enabled():
+        actual_tool_name = get_proxy_tool_name(service_name, tool_name)
+
     # Get activity info for context
     info = activity.info()
     workflow_id = info.workflow_id
 
     # Log the activity execution with user context
+    mode = "proxy" if is_proxy_mode_enabled() else "direct"
     activity.logger.info(
-        f"User '{user_name}' (workflow: {workflow_id}) calling {tool_name} on {service_name} at {mcp_url}"
+        f"User '{user_name}' (workflow: {workflow_id}) calling {actual_tool_name} on {service_name} via {mode} mode at {mcp_url}"
     )
 
     # Create MCP client manager
     manager = MCPClientManager()
 
-    # HTTP server definition
-    http_server_def = create_http_server_def(service_name, mcp_url)
+    # HTTP server definition - use "proxy" as service name in proxy mode
+    effective_service_name = "proxy" if is_proxy_mode_enabled() else service_name
+    http_server_def = create_http_server_def(effective_service_name, mcp_url)
 
     try:
         # Get client connection
         client = await manager.get_client(http_server_def)
-        activity.logger.info(f"Successfully connected to {service_name} MCP server")
+        activity.logger.info(
+            f"Successfully connected to {effective_service_name} MCP server"
+        )
 
         # Call the tool
-        result = await client.call_tool(tool_name, tool_args)
+        result = await client.call_tool(actual_tool_name, tool_args)
 
         # Parse and return result
         data = parse_mcp_result(result)
@@ -146,7 +195,9 @@ async def call_mcp_tool(
         return data
 
     except Exception as e:
-        activity.logger.error(f"Error calling {tool_name} on {service_name}: {e}")
+        activity.logger.error(
+            f"Error calling {actual_tool_name} on {service_name}: {e}"
+        )
 
         # Cleanup on error
         try:

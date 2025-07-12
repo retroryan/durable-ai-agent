@@ -310,34 +310,101 @@ All tests are passing! The project successfully demonstrates:
 - `GET /health` - Health check
 - `GET /docs` - API documentation
 
+## Activities
+
+The project includes several Temporal activities that demonstrate MCP (Model Context Protocol) integration patterns:
+
+### Available Activities
+
+1. **weather_forecast_activity.py** 
+   - Calls forecast MCP server for weather predictions
+   - Returns formatted weather data for New York (3 days)
+   - Located at: `activities/weather_forecast_activity.py:12`
+
+2. **weather_historical_activity.py**
+   - Calls historical MCP server for past weather data
+   - Returns historical weather for Brisbane (yesterday's date)
+   - Located at: `activities/weather_historical_activity.py:11`
+
+3. **agricultural_activity.py**
+   - Calls agricultural MCP server for farming conditions  
+   - Returns soil moisture, evapotranspiration, and growing conditions
+   - Located at: `activities/agricultural_activity.py:10`
+
+4. **find_events_activity.py**
+   - Legacy activity with hardcoded tool execution
+   - Returns event information for Melbourne
+   - Located at: `activities/find_events_activity.py:12`
+
+### MCP Utilities
+
+The `activities/mcp_utils.py` module provides common utilities for all MCP activities:
+
+- **`get_user_display_name()`** - Extract display names for personalization
+- **`get_mcp_server_config()`** - Environment-based MCP server configuration
+- **`call_mcp_tool()`** - Generic MCP tool calling with error handling and logging
+- **`parse_mcp_result()`** - Parse MCP responses consistently across activities
+- **`create_error_response()`** - Generate standardized error responses
+
+### Activity Pattern
+
+All MCP activities follow a consistent pattern:
+```python
+@activity.defn
+async def activity_name(user_message: str, user_name: str = "anonymous") -> Dict[str, Any]:
+    try:
+        result = await call_mcp_tool(
+            service_name="service",
+            tool_name="tool_name", 
+            tool_args={"arg": "value"},
+            user_name=user_name
+        )
+        return {"message": "friendly response", "data": result}
+    except Exception as e:
+        return create_error_response(user_name, str(e))
+```
+
 ## Project Structure
 
 ```
 durable-ai-agent/
 ├── workflows/          # Temporal workflows
-├── activities/         # Temporal activities  
+├── activities/         # Temporal activities with MCP integrations
+│   ├── mcp_utils.py           # Common MCP utilities
+│   ├── weather_forecast_activity.py    # Weather forecast activity
+│   ├── weather_historical_activity.py  # Historical weather activity
+│   ├── agricultural_activity.py        # Agricultural conditions activity
+│   └── find_events_activity.py         # Legacy event finding activity
 ├── tools/             # Tool implementations
 ├── models/            # Data models
 ├── shared/            # Shared utilities
 ├── worker/            # Worker process
 ├── api/               # API server
+├── mcp_proxy/         # Unified MCP proxy server
+│   ├── simple_proxy.py       # Main proxy implementation
+│   ├── run_docker.sh         # Docker compose startup script
+│   ├── test_docker.sh        # Docker testing script
+│   └── stop_docker.sh        # Docker cleanup script
 ├── frontend/          # React UI
 │   ├── src/
 │   │   ├── components/   # React components
 │   │   ├── hooks/        # Custom React hooks
 │   │   └── services/     # API client
 │   └── Dockerfile        # Frontend container
-├── docker-compose.yml  # Service orchestration
+├── integration_tests/ # Integration test suites
+│   └── test_proxy_integration.py  # Proxy integration tests
+├── docker-compose.yml  # Service orchestration with profiles
 └── tests/             # Test suites
 ```
 
 ## Key Simplifications
 
-- No AI/LLM integration
-- Single hardcoded tool execution
-- Fixed parameters (Melbourne, current month)
-- Minimal state management
-- No complex routing or planning
+- No AI/LLM integration (focuses on Temporal workflow patterns)
+- Multiple MCP activities with standardized patterns
+- Fixed parameters for demo purposes (various cities and conditions)
+- Minimal state management (query count tracking)
+- No complex routing or planning (simple activity execution)
+- Unified MCP proxy for simplified service access
 
 ## Temporal Best Practices
 
@@ -557,6 +624,29 @@ Forecast result: {...}
 Historical result: {...}
 ```
 
+### Docker Compose Profiles
+
+The project uses Docker Compose profiles to manage different service configurations:
+
+**Weather Proxy (Default)**:
+```bash
+# Start the unified weather proxy (includes forecast, current, historical services)
+docker-compose --profile weather_proxy up -d weather-proxy
+
+# Or use the convenience script
+./mcp_proxy/run_docker.sh
+
+# Access proxy at: http://localhost:8001/mcp
+```
+
+**Individual Forecast Service**:
+```bash
+# Start only the forecast MCP server
+docker-compose --profile forecast up -d forecast-mcp
+
+# Access forecast service at: http://localhost:7778/mcp
+```
+
 ### Docker Testing
 
 **Simple scripts for Docker operations**:
@@ -564,33 +654,50 @@ Historical result: {...}
 # Navigate to the proxy directory
 cd mcp_proxy/
 
-# Build and run the Docker container
+# Build and run the unified weather proxy with docker-compose
 ./run_docker.sh
 
-# Test the running container
+# Test the running proxy
 ./test_docker.sh
 
-# Stop and remove the container
+# Stop and remove containers
 ./stop_docker.sh
 ```
 
 The scripts handle:
-- `run_docker.sh` - Builds the image and starts the container
-- `test_docker.sh` - Tests the proxy with curl and the Python test script
-- `stop_docker.sh` - Stops and removes the container
+- `run_docker.sh` - Starts the weather proxy using docker-compose profile
+- `test_docker.sh` - Tests the proxy with MCP client calls
+- `stop_docker.sh` - Stops and removes containers with docker-compose
+
+### Integration Testing
+
+**Proxy Integration Test**:
+```bash
+# Start the weather proxy
+./mcp_proxy/run_docker.sh
+
+# Run integration tests against the proxy
+python integration_tests/test_proxy_integration.py
+```
+
+This test verifies:
+- ✅ Proxy connection and unified tool listing (8 tools from 3 services)
+- ✅ Current weather, forecast, and historical tool calls
+- ✅ Connection reuse and multiple sequential operations
+- ✅ All services accessible through single endpoint
 
 ### Manual Testing with curl
 
 **List all tools**:
 ```bash
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:8001/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 ```
 
 **Call a specific tool**:
 ```bash
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:8001/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -608,7 +715,7 @@ curl -X POST http://localhost:8000/mcp \
 ```python
 from fastmcp.client import Client
 
-async with Client("http://localhost:8000/mcp") as client:
+async with Client("http://localhost:8001/mcp") as client:
     # List tools
     tools = await client.list_tools()
     
