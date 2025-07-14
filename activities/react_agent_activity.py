@@ -20,13 +20,19 @@ class ReactAgentActivity:
 
     @activity.defn
     async def run_react_agent(
-        self, user_query: str, user_name: str = "anonymous"
+        self, 
+        user_query: str, 
+        current_iteration: int, 
+        trajectory: Dict[str, Any],
+        user_name: str = "anonymous"
     ) -> ReactAgentActivityResult:
         """
         Activity that runs the ReactAgent for one iteration.
 
         Args:
             user_query: The user's query
+            current_iteration: The current iteration number
+            trajectory: The accumulated trajectory from previous iterations
             user_name: The name of the user making the request
 
         Returns:
@@ -56,7 +62,9 @@ class ReactAgentActivity:
             )
 
             # Run the react agent for one iteration
-            trajectory, tool_name, tool_args = self._execute_react_iteration(user_query)
+            trajectory, tool_name, tool_args = self._execute_react_iteration(
+                user_query, current_iteration, trajectory
+            )
 
             activity.logger.info(
                 f"[ReactAgentActivity Activity] React iteration completed - Trajectory: {trajectory}, "
@@ -101,24 +109,23 @@ class ReactAgentActivity:
             )
 
     def _execute_react_iteration(
-        self, user_query: str
+        self, user_query: str, current_iteration: int, trajectory: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
         """
         Execute a single React agent iteration.
 
         Args:
             user_query: The user's question
+            current_iteration: The current iteration number
+            trajectory: The accumulated trajectory from previous iterations
 
         Returns:
             Tuple[Dict[str, Any], str, Dict[str, Any]]: (trajectory, tool_name, tool_args)
         """
         activity.logger.info(
-            f"[ReactAgentActivity] _execute_react_iteration called with query: '{user_query}'"
+            f"[ReactAgentActivity] _execute_react_iteration called with query: '{user_query}', "
+            f"iteration: {current_iteration}, trajectory keys: {list(trajectory.keys())}"
         )
-
-        trajectory: Dict[str, Any] = {}
-        current_iteration = 1
-
         activity.logger.info(
             f"[ReactAgentActivity] About to call self._react_agent - Type: {type(self._react_agent)}, "
             f"Iteration: {current_iteration}"

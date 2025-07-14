@@ -5,9 +5,8 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from activities.react_agent_activity import ReactAgentActivity
-from models.types import ReactAgentActivityResult, Response
-from workflows.agentic_ai_workflow import AgenticAIWorkflow
+    from workflows.agentic_ai_workflow import AgenticAIWorkflow
+    from models.types import Response
 
 
 @workflow.defn

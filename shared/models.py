@@ -35,26 +35,3 @@ class ToolCall(BaseModel):
         description="A dictionary of arguments to pass to the tool, where keys are argument names and values are their corresponding values.",
     )
 
-
-class ToolExecutionResult(BaseModel):
-    """Result of executing a single tool."""
-
-    tool_name: str = Field(..., description="Name of the tool that was executed")
-    success: bool = Field(
-        default=True, description="Whether the tool execution was successful"
-    )
-    result: Optional[Any] = Field(
-        None, description="Tool execution result if successful"
-    )
-    error: Optional[str] = Field(None, description="Error message if execution failed")
-    error_type: Optional[str] = Field(None, description="Type of error that occurred")
-    execution_time: float = Field(
-        default=0, description="Time taken to execute the tool"
-    )
-    parameters: Dict[str, Any] = Field(
-        default_factory=dict, description="Parameters passed to the tool"
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage in conversation history."""
-        return self.model_dump()

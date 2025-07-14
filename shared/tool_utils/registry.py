@@ -4,8 +4,9 @@ from typing import Any, Callable, Dict, List, Optional, Type
 
 import dspy
 
+from models.types import ToolExecutionResult
 from . import EcommerceToolSet, AgricultureToolSet, EventsToolSet
-from ..models import ToolCall, ToolExecutionResult
+from ..models import ToolCall
 from .base_tool import BaseTool
 from .base_tool_sets import ToolSet, ToolSetTestCase
 
