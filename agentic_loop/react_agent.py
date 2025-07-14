@@ -9,12 +9,21 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Literal, Tuple, Type
 
 import dspy
+from pydantic import BaseModel, Field
 
 from shared.tool_utils import BaseTool
 from shared.tool_utils.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from dspy.signatures.signature import Signature
+
+
+class ReactAgentResult(BaseModel):
+    """Result from ReactAgent forward pass."""
+
+    trajectory: Dict[str, Any] = Field(description="Agent execution trajectory")
+    tool_name: str = Field(description="Name of the tool selected by the agent")
+    tool_args: Dict[str, Any] = Field(description="Arguments for the tool call")
 
 
 class ReactAgent(dspy.Module):
@@ -102,13 +111,25 @@ class ReactAgent(dspy.Module):
 
     def _format_trajectory(self, trajectory: dict[str, Any]):
         """Format trajectory for display to the LLM."""
+        self.logger.debug(
+            f"[ReactAgent] Formatting trajectory with keys: {list(trajectory.keys())}"
+        )
+
         adapter = dspy.settings.adapter or dspy.ChatAdapter()
         trajectory_signature = dspy.Signature(f"{', '.join(trajectory.keys())} -> x")
-        return adapter.format_user_message_content(trajectory_signature, trajectory)
+        formatted = adapter.format_user_message_content(
+            trajectory_signature, trajectory
+        )
+
+        self.logger.debug(
+            f"[ReactAgent] Formatted trajectory length: {len(formatted)} chars"
+        )
+
+        return formatted
 
     def forward(
         self, trajectory: dict, current_iteration: int, **input_args
-    ) -> Tuple[Dict[str, Any], str]:
+    ) -> ReactAgentResult:
         """
         Execute the reactive tool-calling loop.
 
@@ -118,26 +139,52 @@ class ReactAgent(dspy.Module):
             **input_args: Other signature input fields (e.g., user_query)
 
         Returns:
-            Tuple[Dict[str, Any], str, Dict[str, Any]]: (updated_trajectory, tool_name, tool_args)
+            ReactAgentResult: Result containing updated trajectory and tool name
         """
         # Calculate the current index (0-based for trajectory keys)
         idx = current_iteration - 1
 
+        self.logger.info(
+            f"[ReactAgent] Starting forward pass - Iteration: {current_iteration}, "
+            f"Query: '{input_args.get('user_query', 'N/A')}'"
+        )
+        self.logger.debug(f"[ReactAgent] Current trajectory state: {trajectory}")
+
         try:
+            self.logger.debug(f"[ReactAgent] Calling react with formatted trajectory")
+
             pred = self.react(
                 **input_args, trajectory=self._format_trajectory(trajectory)
             )
+
+            self.logger.info(
+                f"[ReactAgent] LLM response - Thought: '{pred.next_thought}', "
+                f"Tool: '{pred.next_tool_name}', Args: {pred.next_tool_args}"
+            )
+
         except ValueError as err:
             self.logger.warning(
-                f"Ending the trajectory: Agent failed to select a valid tool: {err}"
+                f"[ReactAgent] ValueError: Agent failed to select a valid tool: {err}"
             )
             # Return trajectory with error info
             trajectory[f"error_{idx}"] = str(err)
-            return trajectory, "finish"
+            self.logger.debug(
+                f"[ReactAgent] Returning early with error, trajectory updated with error_{idx}"
+            )
+            return ReactAgentResult(
+                trajectory=trajectory, tool_name="finish", tool_args={}
+            )
 
         # Store the prediction details in trajectory with proper indexing
         trajectory[f"thought_{idx}"] = pred.next_thought
         trajectory[f"tool_name_{idx}"] = pred.next_tool_name
         trajectory[f"tool_args_{idx}"] = pred.next_tool_args
 
-        return trajectory, pred.next_tool_name
+        self.logger.info(f"[ReactAgent] Updated trajectory with iteration {idx} data")
+        self.logger.debug(f"[ReactAgent] Final trajectory state: {trajectory}")
+
+        return ReactAgentResult(
+            trajectory=trajectory,
+            tool_name=pred.next_tool_name,
+            tool_args=pred.next_tool_args,
+        )

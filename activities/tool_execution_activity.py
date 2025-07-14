@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from temporalio import activity
 
+from models.types import ToolExecutionRequest
 from shared.tool_utils.registry import ToolRegistry
 
 
@@ -22,24 +23,24 @@ class ToolExecutionActivity:
     @activity.defn
     async def execute_tool(
         self,
-        tool_name: str,
-        tool_args: Dict[str, Any],
-        trajectory: Dict[str, Any],
-        current_iteration: int,
+        request: ToolExecutionRequest,
     ) -> Dict[str, Any]:
         """
         Activity that executes a specified tool and updates the trajectory.
 
         Args:
-            tool_name: The name of the tool to execute.
-            tool_args: The arguments for the tool.
-            trajectory: The current state of the agent's trajectory.
-            current_iteration: The current iteration number.
+            request: ToolExecutionRequest containing tool_name, tool_args, trajectory, and current_iteration.
 
         Returns:
             A dictionary containing the status and the updated trajectory.
         """
         logger = activity.logger
+        
+        # Extract values from request
+        tool_name = request.tool_name
+        tool_args = request.tool_args
+        trajectory = request.trajectory
+        current_iteration = request.current_iteration
 
         if not self.tool_registry:
             logger.error(

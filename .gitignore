@@ -217,3 +217,5 @@ temporal-data/
 .api_keys
 .tokens
 config/secrets/
+
+prompts_out/

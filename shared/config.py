@@ -1,4 +1,6 @@
 import os
+from dataclasses import dataclass
+from typing import Union
 
 from dotenv import load_dotenv
 from temporalio.client import Client
@@ -9,7 +11,7 @@ load_dotenv(override=True)
 # Temporal connection settings
 TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
 TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
-TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "agent-task-queue")
+TEMPORAL_TASK_QUEUE = os.getenv("WORKER_TASK_QUEUE", "durable-ai-agent-tasks")
 
 
 # Authentication settings
@@ -18,13 +20,40 @@ TEMPORAL_TLS_KEY = os.getenv("TEMPORAL_TLS_KEY", "")
 TEMPORAL_API_KEY = os.getenv("TEMPORAL_API_KEY", "")
 
 
+@dataclass
+class Settings:
+    """Application settings loaded from environment variables."""
+
+    # Temporal settings
+    temporal_host: str = TEMPORAL_ADDRESS
+    temporal_namespace: str = TEMPORAL_NAMESPACE
+    task_queue: str = os.getenv("WORKER_TASK_QUEUE", "durable-ai-agent-tasks")
+
+    # API settings
+    api_host: str = os.getenv("API_HOST", "0.0.0.0")
+    api_port: int = int(os.getenv("API_PORT", "8000"))
+    api_url: str = os.getenv("API_URL", "http://localhost:8000")
+
+    # MCP settings
+    mcp_proxy_mode: bool = os.getenv("MCP_PROXY_MODE", "true").lower() == "true"
+    mcp_proxy_url: str = os.getenv("MCP_PROXY_URL", "http://weather-proxy:8000/mcp")
+
+    # Logging
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+
+
+def get_settings() -> Settings:
+    """Get application settings from environment variables."""
+    return Settings()
+
+
 async def get_temporal_client() -> Client:
     """
     Creates a Temporal client based on environment configuration.
     Supports local server, mTLS, and API key authentication methods.
     """
     # Default to no TLS for local development
-    tls_config = False
+    tls_config: Union[bool, TLSConfig] = False
     print(f"Address: {TEMPORAL_ADDRESS}, Namespace {TEMPORAL_NAMESPACE}")
     print("(If unset, then will try to connect to local server)")
 

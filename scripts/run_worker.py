@@ -8,13 +8,22 @@ import dspy
 from dotenv import load_dotenv
 from temporalio.worker import Worker
 
-from activities.react_agent_activity import ReactAgent
-from agentic_loop.demo_react_agent import create_tool_set_registry
-from agentic_loop.react_agent import ReactAgent as AgenticReactAgent
+from activities.tool_execution_activity import ToolExecutionActivity
+from activities.react_agent_activity import ReactAgentActivity
+from activities.extract_agent_activity import ExtractAgentActivity
+
+
+from activities.agricultural_activity import agricultural_activity
+from activities.event_finder_activity import find_events_activity
+from activities.weather_historical_activity import weather_historical_activity
+from shared.tool_utils.registry import create_tool_set_registry
+from agentic_loop.react_agent import ReactAgent
+from agentic_loop.extract_agent import ReactExtract
 from shared.config import TEMPORAL_TASK_QUEUE, get_temporal_client
 from shared.llm_utils import LLMConfig, setup_llm
 from shared.logging_config import setup_file_logging
 from workflows.agentic_ai_workflow import AgenticAIWorkflow
+from workflows.simple_agent_workflow import SimpleAgentWorkflow
 
 
 async def main():
@@ -52,15 +61,33 @@ async def main():
 
             user_query: str = dspy.InputField(desc="The user's question")
 
-    # Initialize AgenticReactAgent from agentic_loop
-    agentic_react_agent = AgenticReactAgent(
-        signature=ReactSignature, tool_registry=registry
-    )
-    logging.info(f"AgenticReactAgent initialized with tool set: {tool_set_name}")
+    # Initialize ReactAgent from agentic_loop
+    agentic_react_agent = ReactAgent(signature=ReactSignature, tool_registry=registry)
+    logging.info(f"ReactAgent initialized with tool set: {tool_set_name}")
 
     # Create activity with the initialized agent
-    react_agent_activity = ReactAgent(agentic_react_agent)
+    react_agent_activity = ReactAgentActivity(agentic_react_agent)
     logging.info(f"ReactAgent activity created with pre-initialized agent")
+
+    # Initialize ExtractAgent
+    extract_signature = registry.get_extract_signature()
+    if not extract_signature:
+        # Fallback to generic extract signature
+        class ExtractSignature(dspy.Signature):
+            """Extract the final answer from the agent's trajectory."""
+            
+            user_query: str = dspy.InputField(desc="The original user's question")
+            answer: str = dspy.OutputField(desc="The final answer to the user's question")
+            reasoning: str = dspy.OutputField(desc="The reasoning behind the answer")
+        
+        extract_signature = ExtractSignature
+    
+    extract_agent = ReactExtract(signature=extract_signature)
+    extract_agent_activity = ExtractAgentActivity(extract_agent)
+    logging.info(f"ExtractAgent activity created with pre-initialized agent")
+
+    tool_execution_activity = ToolExecutionActivity(tool_registry=registry)
+    logging.info(f"ToolExecutionActivity initialized with tool registry")
 
     # Create the client
     try:
@@ -80,9 +107,14 @@ async def main():
             worker = Worker(
                 client,
                 task_queue=TEMPORAL_TASK_QUEUE,
-                workflows=[AgenticAIWorkflow],
+                workflows=[AgenticAIWorkflow, SimpleAgentWorkflow],
                 activities=[
                     react_agent_activity.run_react_agent,
+                    extract_agent_activity.run_extract_agent,
+                    tool_execution_activity.execute_tool,
+                    find_events_activity,
+                    weather_historical_activity,
+                    agricultural_activity,
                 ],
                 activity_executor=activity_executor,
             )

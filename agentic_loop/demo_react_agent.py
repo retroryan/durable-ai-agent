@@ -13,9 +13,10 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import dspy
+from dotenv import load_dotenv
 
 # Add the project root to Python path so imports work
 project_root = Path(__file__).parent.parent
@@ -24,19 +25,9 @@ sys.path.insert(0, str(project_root / "shared" / "tool_utils"))
 
 # Import shared utilities
 from shared import ConsoleFormatter, setup_llm
-from shared.llm_utils import get_full_history, save_dspy_history
+from shared.llm_utils import LLMConfig, get_full_history, save_dspy_history
 
-# Import tool sets
-from shared.tool_utils import EcommerceToolSet, EventsToolSet
-from shared.tool_utils.agriculture_tool_set import AgricultureToolSet
-from shared.tool_utils.registry import ToolRegistry
-
-# Tool set class mapping using NAME constants
-TOOL_SET_MAP = {
-    EcommerceToolSet.NAME: EcommerceToolSet,
-    AgricultureToolSet.NAME: AgricultureToolSet,
-    EventsToolSet.NAME: EventsToolSet,
-}
+from shared.tool_utils.registry import create_tool_set_registry, TOOL_SET_MAP
 
 # Initialize module-level logger
 logger = logging.getLogger(__name__)
@@ -64,18 +55,6 @@ def setup_logging(log_level: str = "INFO"):
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("anthropic").setLevel(logging.WARNING)
         logging.getLogger("LiteLLM").setLevel(logging.WARNING)
-
-
-def create_tool_set_registry(tool_set_name: str) -> ToolRegistry:
-    """Create tool registry for a specific tool set."""
-    tool_set_class = TOOL_SET_MAP[tool_set_name]
-    tool_set = tool_set_class()
-
-    # Create registry and load tools
-    registry = ToolRegistry()
-    registry.register_tool_set(tool_set)
-
-    return registry
 
 
 def run_react_loop(
@@ -113,11 +92,16 @@ def run_react_loop(
         logger.debug(f"Iteration {current_iteration}/{max_iterations}")
 
         # Call ReactAgent
-        trajectory, tool_name, tool_args = react_agent(
+        result = react_agent(
             trajectory=trajectory,
             current_iteration=current_iteration,
             user_query=user_query,
         )
+
+        # Extract values from ReactAgentResult
+        trajectory = result.trajectory
+        tool_name = result.tool_name
+        tool_args = result.tool_args
 
         # Save ReactAgent history only if DSPY debug is enabled
         if dspy_debug_enabled:
@@ -317,6 +301,9 @@ def run_single_test_case(
 def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
     """Run test cases for a tool set."""
     console = ConsoleFormatter()
+    
+    # Load environment variables from worker.env
+    load_dotenv("worker.env", override=True)
 
     # Check if DSPY debug mode is enabled
     dspy_debug_enabled = os.getenv("DSPY_DEBUG", "false").lower() == "true"
@@ -328,7 +315,8 @@ def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
 
     # Setup LLM
     logger.info("Setting up LLM...")
-    setup_llm()
+    llm_config = LLMConfig.from_env()
+    setup_llm(llm_config)
 
     # Create tool registry
     registry = create_tool_set_registry(tool_set_name)

@@ -66,6 +66,8 @@ If any task seems to require:
 
 ## Essential Commands
 
+**IMPORTANT: Always use Poetry for running Python commands.** Never use `python` directly - use `poetry run python` instead. This ensures all dependencies are available in the correct virtual environment.
+
 ### Development Setup
 ```bash
 # Install dependencies
@@ -73,22 +75,6 @@ poetry install
 
 # Set up environment
 cp .env.example .env
-```
-
-
-
-### Testing
-```bash
-# Unit tests (no services required)
-poetry run poe test
-
-# Integration tests (requires docker-compose up)
-docker-compose up -d
-poetry run pytest integration_tests/ -v
-
-# Test specific components
-poetry run pytest integration_tests/ -m api -v
-poetry run pytest integration_tests/ -m workflow -v
 ```
 
 ### Running the Application
@@ -179,7 +165,7 @@ Common utilities extracted for MCP activities:
 ./mcp_proxy/test_docker.sh
 
 # Run proxy integration tests
-python integration_tests/test_proxy_integration.py
+poetry run python integration_tests/test_proxy_integration.py
 
 # Stop proxy
 ./mcp_proxy/stop_docker.sh
@@ -192,19 +178,6 @@ python integration_tests/test_proxy_integration.py
 - Type hints are enforced - run `poetry run poe lint-types` before committing
 - Frontend components (Phase 4) are not yet implemented
 
-## Code Quality Requirements
-
-**ALWAYS run linting checks after implementing code changes:**
-```bash
-poetry run poe lint
-```
-
-If linting fails, fix the issues by:
-1. Running `poetry run poe format` to auto-fix formatting issues
-2. Addressing any type errors reported by mypy
-3. Running `poetry run poe lint` again to verify all checks pass
-
-This ensures the codebase maintains high quality standards and type safety.
 
 ## Critical Architecture Guidelines
 

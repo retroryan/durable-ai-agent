@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Type
 
 import dspy
 
+from . import EcommerceToolSet, AgricultureToolSet, EventsToolSet
 from ..models import ToolCall, ToolExecutionResult
 from .base_tool import BaseTool
 from .base_tool_sets import ToolSet, ToolSetTestCase
@@ -171,3 +172,23 @@ class ToolRegistry:
         if self._tool_set:
             return self._tool_set.get_extract_signature()
         return None
+
+
+
+# Tool set class mapping using NAME constants
+TOOL_SET_MAP = {
+    EcommerceToolSet.NAME: EcommerceToolSet,
+    AgricultureToolSet.NAME: AgricultureToolSet,
+    EventsToolSet.NAME: EventsToolSet,
+}
+
+def create_tool_set_registry(tool_set_name: str) -> ToolRegistry:
+    """Create tool registry for a specific tool set."""
+    tool_set_class = TOOL_SET_MAP[tool_set_name]
+    tool_set = tool_set_class()
+
+    # Create registry and load tools
+    registry = ToolRegistry()
+    registry.register_tool_set(tool_set)
+
+    return registry
