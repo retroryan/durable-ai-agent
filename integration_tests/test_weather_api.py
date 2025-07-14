@@ -9,29 +9,8 @@ import sys
 import uuid
 from datetime import datetime
 
-import httpx
-
+from utils.api_client import DurableAgentAPIClient
 from shared.tool_utils.agriculture_tool_set import AgricultureToolSet
-
-
-async def call_chat_api(
-    message: str, user_name: str = None, base_url: str = "http://localhost:8000"
-) -> dict:
-    """Call the chat API endpoint and return the response."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            payload = {"message": message}
-            if user_name:
-                payload["user_name"] = user_name
-            response = await client.post(f"{base_url}/chat", json=payload)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            print(f"❌ HTTP Error: {e}")
-            return {"error": str(e)}
-        except Exception as e:
-            print(f"❌ Unexpected error: {e}")
-            return {"error": str(e)}
 
 
 async def main():
@@ -49,41 +28,49 @@ async def main():
     successful_tests = 0
     failed_tests = 0
     
-    for i, test_case in enumerate(test_cases, 1):
-        print(f"\n📍 Test {i}/{len(test_cases)}: {test_case.description}")
-        print(f"🎯 Scenario: {test_case.scenario}")
-        print(f"🔧 Expected tools: {', '.join(test_case.expected_tools) if test_case.expected_tools else 'Multiple tools'}")
-        print("-" * 40)
-        
-        user_name = f"test_user_{uuid.uuid4().hex[:8]}"
-        # Prepend "weather:" to all queries to trigger the weather workflow
-        weather_request = f"weather: {test_case.request}"
-        print(f"Sending: '{weather_request}' from user: {user_name}")
-
-        response = await call_chat_api(weather_request, user_name=user_name)
-        print("\nResponse:")
-        print(json.dumps(response, indent=2))
-
-        if "error" not in response:
-            print(f"\n✅ Success! Workflow ID: {response.get('workflow_id', 'N/A')}")
-            successful_tests += 1
+    # Create API client
+    async with DurableAgentAPIClient() as client:
+        for i, test_case in enumerate(test_cases, 1):
+            print(f"\n📍 Test {i}/{len(test_cases)}: {test_case.description}")
+            print(f"🎯 Scenario: {test_case.scenario}")
+            print(f"🔧 Expected tools: {', '.join(test_case.expected_tools) if test_case.expected_tools else 'Multiple tools'}")
+            print("-" * 40)
             
-            # Check if it mentions specific scenarios
-            response_message = response.get("message", "").lower()
-            if test_case.scenario == "forecast" and "forecast" in response_message:
-                print("🌤️  Weather forecast information detected!")
-            elif test_case.scenario == "agriculture" and any(word in response_message for word in ["soil", "crop", "plant", "agricult"]):
-                print("🌱 Agricultural information detected!")
-            elif test_case.scenario == "historical" and "historical" in response_message:
-                print("📊 Historical weather data detected!")
-            elif test_case.scenario == "comparison" and any(word in response_message for word in ["compar", "both", "versus"]):
-                print("⚖️  Comparison detected!")
-        else:
-            print("\n❌ Failed to get response")
-            failed_tests += 1
+            user_name = f"test_user_{uuid.uuid4().hex[:8]}"
+            # Prepend "weather:" to all queries to trigger the weather workflow
+            weather_request = f"weather: {test_case.request}"
+            print(f"Sending: '{weather_request}' from user: {user_name}")
 
-        # Wait a bit between calls to avoid overwhelming the API
-        await asyncio.sleep(1)
+            try:
+                response = await client.chat(weather_request, user_name=user_name)
+                print("\nResponse:")
+                print(json.dumps(response, indent=2))
+
+                print(f"\n✅ Success! Workflow ID: {response.get('workflow_id', 'N/A')}")
+                successful_tests += 1
+                
+                # Check if it mentions specific scenarios
+                last_response = response.get("last_response", {})
+                response_message = ""
+                if isinstance(last_response, dict):
+                    response_message = last_response.get("message", "").lower()
+                elif isinstance(last_response, str):
+                    response_message = last_response.lower()
+                
+                if test_case.scenario == "forecast" and "forecast" in response_message:
+                    print("🌤️  Weather forecast information detected!")
+                elif test_case.scenario == "agriculture" and any(word in response_message for word in ["soil", "crop", "plant", "agricult"]):
+                    print("🌱 Agricultural information detected!")
+                elif test_case.scenario == "historical" and "historical" in response_message:
+                    print("📊 Historical weather data detected!")
+                elif test_case.scenario == "comparison" and any(word in response_message for word in ["compar", "both", "versus"]):
+                    print("⚖️  Comparison detected!")
+            except Exception as e:
+                print(f"\n❌ Failed to get response: {e}")
+                failed_tests += 1
+
+            # Wait a bit between calls to avoid overwhelming the API
+            await asyncio.sleep(1)
 
     print("\n" + "=" * 60)
     print(f"✨ Test completed! Results:")
@@ -92,12 +79,16 @@ async def main():
     
     if failed_tests == 0:
         print("\n🎉 All tests passed!")
+        return 0
     else:
         print(f"\n⚠️  {failed_tests} test(s) failed")
+        return 1
 
 
 def check_services():
     """Check if required services are running."""
+    import httpx
+    
     print("🔍 Checking services...")
 
     try:
@@ -131,9 +122,11 @@ if __name__ == "__main__":
 
     # Run the async main function
     try:
-        asyncio.run(main())
+        exit_code = asyncio.run(main())
+        sys.exit(exit_code)
     except KeyboardInterrupt:
         print("\n\n⚠️  Test interrupted by user")
+        sys.exit(1)
     except Exception as e:
         print(f"\n\n❌ Test failed with error: {e}")
         sys.exit(1)

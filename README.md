@@ -1,8 +1,17 @@
-# Durable AI Agent
+# Durable AI Agent - A Fundamental Evolution in AI Agents
 
-A demonstration of **Custom Built Agentic AI Loop with DSPy and Multi-Step Reasoning** using Temporal Workflows for durable execution. This project shows how to build reliable, persistent AI agents that can reason, plan, and execute actions while maintaining state across restarts and failures.
+The durable-ai-agent represents a fundamental evolution in building reliable AI agents. By combining DSPy's context engineering, Temporal's durable execution, and modern MCP integration, it demonstrates how to build production-ready agentic AI applications with fully automated agent-driven tool execution that can handle complex, multi-step reasoning tasks while maintaining reliability and transparency.
 
-## Overview
+This project goes beyond traditional AI applications that rely on brittle prompt engineering and fragile execution patterns. Instead, it showcases a robust architecture where AI agents don't just generate responses—they reason through problems systematically, select and execute appropriate tools autonomously, and maintain their state even through system failures or long-running operations. Every decision is traceable, every action is durable, and every interaction builds upon previous context in a way that mirrors human problem-solving.
+
+The power comes from bringing together three cutting-edge technologies:
+- **DSPy's Context Engineering**: Move beyond brittle prompts to structured, type-safe reasoning with declarative signatures and automatic optimization
+- **Temporal's Durable Execution**: Ensure your AI agents survive failures, restarts, and long-running operations with automatic state persistence and retry logic
+- **Modern MCP Integration**: Seamlessly connect to tools and services with both stdio and HTTP transports, enabling rich tool ecosystems
+
+The result is an AI system that not only thinks and reasons like modern LLMs but also executes reliably like production software—bridging the gap between experimental AI and enterprise-ready applications. This is what makes it possible to deploy AI agents that can be trusted with real-world tasks, from analyzing agricultural conditions to orchestrating complex multi-step workflows.
+
+> **Note**: For detailed architecture information and how this project represents a significant evolution over traditional AI applications, see [DURABLE_AI_OVERVIEW.md](DURABLE_AI_OVERVIEW.md).
 
 **Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy System Prompt](https://github.com/retroryan/dspy-system-prompt)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
 

@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## File Exclusions
+
+When searching or analyzing this codebase, please ignore:
+- `.venv/` - Virtual environment files
+- `.history/` - Shell history files
+- `.mypy_cache/` - MyPy cache files
+- `__pycache__/` - Python bytecode cache
+- `node_modules/` - Node.js dependencies
+
 ## Project Overview
 
 This is a Python-based distributed workflow application demonstrating durable AI conversation patterns using Temporal, with a **Custom Built Agentic AI Loop using DSPy and Multi-Step Reasoning**. The project implements a React (Reason-Act) pattern for intelligent tool selection and execution, using FastAPI for the API server, Temporal for workflow orchestration, and Docker Compose for containerized deployment.

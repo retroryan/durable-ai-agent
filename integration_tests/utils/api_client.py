@@ -51,6 +51,7 @@ class DurableAgentAPIClient:
         self,
         message: str,
         workflow_id: Optional[str] = None,
+        user_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send a chat message to start or continue a workflow.
@@ -58,6 +59,7 @@ class DurableAgentAPIClient:
         Args:
             message: The message to send
             workflow_id: Optional workflow ID to continue existing workflow
+            user_name: Optional user name for the workflow
 
         Returns:
             Workflow state response
@@ -65,6 +67,8 @@ class DurableAgentAPIClient:
         payload = {"message": message}
         if workflow_id:
             payload["workflow_id"] = workflow_id
+        if user_name:
+            payload["user_name"] = user_name
 
         response = await self.client.post(
             f"{self.base_url}/chat",
