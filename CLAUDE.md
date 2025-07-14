@@ -75,12 +75,7 @@ poetry install
 cp .env.example .env
 ```
 
-### Code Quality
-```bash
-poetry run poe format     # Format code with black and isort
-poetry run poe lint       # Run all linters (black, isort, mypy)
-poetry run poe lint-types # Run type checking only
-```
+
 
 ### Testing
 ```bash

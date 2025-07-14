@@ -79,18 +79,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: durable-ai-agent-worker
+    container_name: temporal-ai-agent-worker
     depends_on:
       - temporal
     env_file:
       - .env
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-    command: python worker/main.py
+    command: python scripts/run_worker.py
     networks:
       - durable-network
     volumes:
       - ./logs:/app/logs
+
 
   frontend:
     build:

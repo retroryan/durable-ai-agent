@@ -5,6 +5,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 from models.types import Response
+from workflows.agentic_ai_workflow import AgenticAIWorkflow
 
 
 @workflow.defn
@@ -32,16 +33,19 @@ class SimpleAgentWorkflow:
 
         # Route to appropriate activity based on user message content
         if "weather" in user_message.lower():
-            activity_result = await workflow.execute_activity(
-                "weather_forecast_activity",
-                args=[user_message, user_name],
-                start_to_close_timeout=timedelta(seconds=30),
-                retry_policy=RetryPolicy(
-                    maximum_attempts=3,
-                    initial_interval=timedelta(seconds=1),
-                    maximum_interval=timedelta(seconds=10),
-                ),
+            # Execute the child workflow for weather queries
+            child_result = await workflow.execute_child_workflow(
+                AgenticAIWorkflow.run,
+                "What was the weather like in San Francisco from 2025-06-06 to 2025-06-13?",
+                user_name,
+                id=f"agentic-ai-weather-{workflow.info().workflow_id}",
             )
+
+            # Convert child workflow result to expected format
+            activity_result = {
+                "message": f"Child workflow result: {child_result.message}",
+                "event_count": child_result.event_count,
+            }
         elif "historical" in user_message.lower():
             activity_result = await workflow.execute_activity(
                 "weather_historical_activity",

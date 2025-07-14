@@ -1,0 +1,1 @@
+"""Treasure hunt game tools."""
