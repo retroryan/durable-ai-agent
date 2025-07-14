@@ -8,11 +8,11 @@ This project demonstrates the integration of:
 
 **Temporal Workflows & Workers**: The foundation provides durable execution with automatic retry, state persistence, and fault tolerance. Workflows can be long-running conversations that survive system restarts and continue from where they left off.
 
-**Agentic AI Loop**: When a user message contains the magic word "weather", the system triggers a fully custom agentic workflow modeled after DSPy React patterns. This agent can reason about problems, select appropriate tools, execute actions, and observe results in an iterative loop until the task is complete.
+**A Custom Built Agentic AI Loop with DSPy**: When a user message contains the magic word "weather" (that will soon be fixed with a custom classification agent), the system triggers a fully custom agentic workflow modeled after DSPy React patterns (see [DSPy System Prompt](https://github.com/retroryan/dspy-system-prompt)). This implements the Reason-Act (ReAct) pattern where the agent iteratively reasons about the problem, selects appropriate tools, executes actions, and observes results in a continuous loop until the task is complete or maximum iterations are reached.
 
-**Multi-Step Reasoning**: The agentic loop breaks down complex requests into smaller steps, uses available tools to gather information, and synthesizes results. It can handle multi-turn reasoning where each step builds on previous observations.
+**Multi-Step Reasoning**: The agentic loop implements the DSPy ReAct pattern with structured thought-action-observation cycles. Each iteration includes reasoning about the current state, selecting the most appropriate tool, executing the action, and incorporating the observation into the agent's trajectory. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
 
-**Tool Integration**: The system includes several MCP (Model Context Protocol) servers for weather forecasting, historical weather data, and agricultural conditions. We also have a built-in MCP client manager that handles connections and tool execution. A next step will be to add these as tools to fully support MCP integration across all workflows.
+**Tool Integration**: The system features a comprehensive weather tool ecosystem centered around the AgricultureToolSet which provides three core weather tools: `get_agricultural_conditions` (soil moisture, evapotranspiration, growing conditions), `get_weather_forecast` (up to 16-day forecasts with meteorological data), and `get_historical_weather` (historical weather data retrieval). These tools are managed through a central ToolRegistry that handles tool execution, validation, and result formatting. Additionally, the system includes several MCP (Model Context Protocol) servers for weather forecasting, historical weather data, and agricultural conditions, with a built-in MCP client manager that handles connections and tool execution. A next step will be to add these as tools to fully support MCP integration across all workflows.
 
 **Fallback Patterns**: For simpler requests, the system falls back to direct activity execution for weather historical data, agriculture conditions, or basic event finding, ensuring the system works for both simple and complex scenarios.
 
@@ -24,30 +24,12 @@ This project demonstrates the integration of:
 - Node.js 20+ (for frontend development)
 - Poetry (for Python dependency management)
 
-### Setting up Poetry
-
-1. **Install Poetry** (if not already installed):
-   ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   ```
-
-2. **Install project dependencies**:
-   ```bash
-   poetry install
-   ```
-
-3. **Activate the virtual environment**:
-   ```bash
-   poetry shell
-   ```
-
-## Architecture
-
-The system consists of:
-- **Workflow**: Simple workflow that tracks query count and executes activities
-- **Activity**: Calls a hardcoded tool (find_events) with fixed parameters
-- **API**: FastAPI server for workflow management
+**System Components:**
+- **Workflow**: Durable workflows that track state and orchestrate agentic AI loops
+- **Activities**: Atomic units including React agent iterations, tool execution, and result extraction
+- **API**: FastAPI server for workflow management and chat interface
 - **Frontend**: React UI for chat interaction
+- **Worker**: Processes Temporal workflows and activities with integrated agentic loops
 
 
 ### Running the Complete System (Recommended)
@@ -95,6 +77,23 @@ Docker Compose will start the following services:
 4. The workflow ID and status are displayed in the header
 5. Click "New Conversation" to start a fresh workflow
 
+### Setting up Poetry
+
+1. **Install Poetry** (if not already installed):
+   ```bash
+   curl -sSL https://install.python-poetry.org | python3 -
+   ```
+
+2. **Install project dependencies**:
+   ```bash
+   poetry install
+   ```
+
+3. **Activate the virtual environment**:
+   ```bash
+   poetry shell
+   ```
+
 ### Development Mode
 
 For local development without Docker:
@@ -116,6 +115,14 @@ npm install
 npm run dev
 ```
 
+### Integration Tests
+
+The main integration test is a plain Python program:
+
+```bash
+poetry run python integration_tests/test_weather_api.py
+```
+
 
 ## API Endpoints
 
@@ -131,22 +138,38 @@ The project includes several Temporal activities that demonstrate MCP (Model Con
 
 ### Available Activities
 
-1. **weather_forecast_activity.py** 
+**Highlight - Agentic AI Activities:**
+
+1. **react_agent_activity.py** ⭐
+   - The core of the agentic loop implementing DSPy ReAct patterns
+   - Executes single iterations of the Reason-Act cycle with tool selection and execution
+   - Maintains trajectory state across iterations for multi-step reasoning
+   - Located at: `activities/react_agent_activity.py`
+
+2. **extract_agent_activity.py** ⭐
+   - Synthesizes final answers from the accumulated trajectory of agent actions
+   - Uses DSPy Extract patterns to provide reasoning and conclusions
+   - Processes the complete agent execution history to generate coherent responses
+   - Located at: `activities/extract_agent_activity.py`
+
+**Standard MCP Integration Activities:**
+
+3. **weather_forecast_activity.py** 
    - Calls forecast MCP server for weather predictions
    - Returns formatted weather data for New York (3 days)
    - Located at: `activities/weather_forecast_activity.py:12`
 
-2. **weather_historical_activity.py**
+4. **weather_historical_activity.py**
    - Calls historical MCP server for past weather data
    - Returns historical weather for Brisbane (yesterday's date)
    - Located at: `activities/weather_historical_activity.py:11`
 
-3. **agricultural_activity.py**
+5. **agricultural_activity.py**
    - Calls agricultural MCP server for farming conditions  
    - Returns soil moisture, evapotranspiration, and growing conditions
    - Located at: `activities/agricultural_activity.py:10`
 
-4. **find_events_activity.py**
+6. **find_events_activity.py**
    - Legacy activity with hardcoded tool execution
    - Returns event information for Melbourne
    - Located at: `activities/find_events_activity.py:12`
@@ -211,29 +234,6 @@ durable-ai-agent/
 ├── docker-compose.yml  # Service orchestration with profiles
 └── tests/             # Test suites
 ```
-
-## Key Simplifications
-
-- No AI/LLM integration (focuses on Temporal workflow patterns)
-- Multiple MCP activities with standardized patterns
-- Fixed parameters for demo purposes (various cities and conditions)
-- Minimal state management (query count tracking)
-- No complex routing or planning (simple activity execution)
-- Unified MCP proxy for simplified service access
-
-## Temporal Best Practices
-
-### Key Points from Temporal Documentation
-
-- **Activity IDs** are only unique within a workflow run, not globally
-- **Task Tokens** provide unique identification for activity executions
-- **Workflow IDs** are unique within a namespace and commonly include business identifiers
-- **User Context**: Always pass user-specific data explicitly as parameters rather than relying on implicit context
-- **Activity Context**: Activities have access to workflow ID, activity ID, task queue, and attempt number through `activity.info()`
-
-## Next Steps
-
-See `durable-ai-agent.md` for the complete implementation plan and architecture guide.
 
 ### Integration Tests
 
