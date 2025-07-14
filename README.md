@@ -11,7 +11,7 @@ The power comes from bringing together three cutting-edge technologies:
 
 The result is an AI system that not only thinks and reasons like modern LLMs but also executes reliably like production software—bridging the gap between experimental AI and enterprise-ready applications. This is what makes it possible to deploy AI agents that can be trusted with real-world tasks, from analyzing agricultural conditions to orchestrating complex multi-step workflows.
 
-**Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy Overview](DSPy Overview.md)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
+**Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy Overview](DSPy%20Overview.md)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
 
 **Multi-Step Reasoning**: Each iteration includes structured thought-action-observation cycles. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
 
@@ -23,9 +23,9 @@ The result is an AI system that not only thinks and reasons like modern LLMs but
 
 ## Sample Output
 
-- [Agentic Loop Sample Run](Agentic Loop Sample Run.md) - Example of the full agentic reasoning process
-- [Agriculture Query Samples](Agriculture Query Samples.md) - Sample agricultural weather queries and responses
-- [MCP Proxy Server Routing](MCP Proxy Server Routing.md) - How the proxy routes between weather services
+- [Agentic Loop Sample Run](Agentic%20Loop%20Sample%20Run.md) - Example of the full agentic reasoning process
+- [Agriculture Query Samples](Agriculture%20Query%20Samples.md) - Sample agricultural weather queries and responses
+- [MCP Proxy Server Routing](MCP%20Proxy%20Server%20Routing.md) - How the proxy routes between weather services
 - [View Client Screenshot](sample_client_screen_shoot.png) - Visual interface demonstration
 
 ## Quick Start
@@ -98,7 +98,7 @@ flowchart TD
     C --> D[React Agent Activity]
     D --> E[React Agent]
     E --> F[LLM]
-    F --> G[Tool Execution]
+    F --> G[Tool Execution Activity]
     G --> H{Query Fully Answered?}
     H -->|No| C
     H -->|Yes| I[Extract Agent Activity]
