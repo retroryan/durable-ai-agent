@@ -111,12 +111,13 @@ class ToolRegistry:
                 parameters=tool_call.arguments,
             )
 
-    def register_tool_set(self, tool_set: ToolSet) -> None:
+    def register_tool_set(self, tool_set: ToolSet, mock_results: bool = True) -> None:
         """
         Registers all tools from a tool set.
 
         Args:
             tool_set: The tool set to register
+            mock_results: Whether tools should use mock results (default True)
         """
         self._tool_set = tool_set
         for tool_class in tool_set.config.tool_classes:
@@ -127,8 +128,8 @@ class ToolRegistry:
 
             self._tools[tool_name] = tool_class
 
-            # Create and cache tool instance. Tools are Pydantic models.
-            instance = tool_class()
+            # Create and cache tool instance with mock configuration
+            instance = tool_class(mock_results=mock_results)
             self._instances[tool_name] = instance
 
     def get_all_test_cases(self) -> List[ToolSetTestCase]:
@@ -183,13 +184,21 @@ TOOL_SET_MAP = {
     EventsToolSet.NAME: EventsToolSet,
 }
 
-def create_tool_set_registry(tool_set_name: str) -> ToolRegistry:
-    """Create tool registry for a specific tool set."""
+def create_tool_set_registry(tool_set_name: str, mock_results: bool = True) -> ToolRegistry:
+    """Create tool registry for a specific tool set.
+    
+    Args:
+        tool_set_name: Name of the tool set to create
+        mock_results: Whether tools should use mock results (default True)
+    
+    Returns:
+        ToolRegistry configured with the specified tool set
+    """
     tool_set_class = TOOL_SET_MAP[tool_set_name]
     tool_set = tool_set_class()
 
-    # Create registry and load tools
+    # Create registry and load tools with mock configuration
     registry = ToolRegistry()
-    registry.register_tool_set(tool_set)
+    registry.register_tool_set(tool_set, mock_results=mock_results)
 
     return registry

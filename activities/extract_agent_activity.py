@@ -1,22 +1,34 @@
 """Activity that integrates ExtractAgent with Temporal workflows."""
 from typing import Any, Dict
 
+import dspy
 from temporalio import activity
 
 from models.types import ExtractAgentActivityResult
 
 
+# Create a signature for answer extraction
+class AnswerExtractionSignature(dspy.Signature):
+    """Extract a clear, concise answer from the gathered information."""
+
+    user_query: str = dspy.InputField(desc="The user's original question")
+    answer: str = dspy.OutputField(
+        desc="Clear, direct answer to the user's question"
+    )
+
+
 class ExtractAgentActivity:
-    """An Extract agent activity that uses a pre-initialized agent."""
+    """An Extract agent activity that creates its own ReactExtract agent."""
 
-    def __init__(self, extract_agent):
+    def __init__(self):
         """
-        Initialize with a pre-configured ReactExtract agent.
-
-        Args:
-            extract_agent: The initialized agent from agentic_loop
+        Initialize the activity. Creates its own ReactExtract with AnswerExtractionSignature.
         """
-        self._extract_agent = extract_agent
+        # Import here to avoid circular imports
+        from agentic_loop.extract_agent import ReactExtract
+        
+        # Create our own ReactExtract with the AnswerExtractionSignature
+        self._extract_agent = ReactExtract(signature=AnswerExtractionSignature)
 
     @activity.defn
     async def run_extract_agent(
@@ -57,13 +69,14 @@ class ExtractAgentActivity:
             )
 
             # Run the extract agent to synthesize the final answer
+            # Following the exact pattern from demo_react_agent.extract_final_answer
             extract_result = self._extract_agent(
                 trajectory=trajectory, user_query=user_query
             )
 
-            # Extract the answer and reasoning from the prediction
-            answer = getattr(extract_result, "answer", None)
-            reasoning = getattr(extract_result, "reasoning", None)
+            # Extract the answer from the result (reasoning is not in our signature)
+            answer = extract_result.answer
+            reasoning = getattr(extract_result, "reasoning", "")
 
             activity.logger.info(
                 f"[ExtractAgentActivity Activity] Extract completed - Answer: {answer}"

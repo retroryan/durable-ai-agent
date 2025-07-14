@@ -83,6 +83,9 @@ class ToolExecutionResult(BaseModel):
     parameters: Dict[str, Any] = Field(
         default_factory=dict, description="Parameters passed to the tool"
     )
+    trajectory: Optional[Dict[str, Any]] = Field(
+        None, description="Updated trajectory after tool execution"
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage in conversation history."""

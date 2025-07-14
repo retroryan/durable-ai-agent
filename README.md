@@ -1,20 +1,16 @@
 # Durable AI Agent
 
-A demonstration of how to combine Temporal Workflows and Workers with an Agentic AI Loop that includes automatic execution capabilities. This project shows how to build reliable, persistent AI agents that can reason, plan, and execute actions while maintaining state across restarts and failures.
+A demonstration of **Custom Built Agentic AI Loop with DSPy and Multi-Step Reasoning** using Temporal Workflows for durable execution. This project shows how to build reliable, persistent AI agents that can reason, plan, and execute actions while maintaining state across restarts and failures.
 
 ## Overview
 
-This project demonstrates the integration of:
+**Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy System Prompt](https://github.com/retroryan/dspy-system-prompt)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
 
-**Temporal Workflows & Workers**: The foundation provides durable execution with automatic retry, state persistence, and fault tolerance. Workflows can be long-running conversations that survive system restarts and continue from where they left off.
+**Multi-Step Reasoning**: Each iteration includes structured thought-action-observation cycles. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
 
-**A Custom Built Agentic AI Loop with DSPy**: When a user message contains the magic word "weather" (that will soon be fixed with a custom classification agent), the system triggers a fully custom agentic workflow modeled after DSPy React patterns (see [DSPy System Prompt](https://github.com/retroryan/dspy-system-prompt)). This implements the Reason-Act (ReAct) pattern where the agent iteratively reasons about the problem, selects appropriate tools, executes actions, and observes results in a continuous loop until the task is complete or maximum iterations are reached.
+**Tool Integration**: The system includes precision agriculture tool sets that currently call the Open Meteo API directly. MCP (Model Context Protocol) servers are already built and will be set up shortly for enhanced tool integration.
 
-**Multi-Step Reasoning**: The agentic loop implements the DSPy ReAct pattern with structured thought-action-observation cycles. Each iteration includes reasoning about the current state, selecting the most appropriate tool, executing the action, and incorporating the observation into the agent's trajectory. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
-
-**Tool Integration**: The system features a comprehensive weather tool ecosystem centered around the AgricultureToolSet which provides three core weather tools: `get_agricultural_conditions` (soil moisture, evapotranspiration, growing conditions), `get_weather_forecast` (up to 16-day forecasts with meteorological data), and `get_historical_weather` (historical weather data retrieval). These tools are managed through a central ToolRegistry that handles tool execution, validation, and result formatting. Additionally, the system includes several MCP (Model Context Protocol) servers for weather forecasting, historical weather data, and agricultural conditions, with a built-in MCP client manager that handles connections and tool execution. A next step will be to add these as tools to fully support MCP integration across all workflows.
-
-**Fallback Patterns**: For simpler requests, the system falls back to direct activity execution for weather historical data, agriculture conditions, or basic event finding, ensuring the system works for both simple and complex scenarios.
+**Temporal Foundation**: Provides durable execution with automatic retry, state persistence, and fault tolerance. Workflows can be long-running conversations that survive system restarts.
 
 ## Quick Start
 
@@ -77,130 +73,81 @@ Docker Compose will start the following services:
 4. The workflow ID and status are displayed in the header
 5. Click "New Conversation" to start a fresh workflow
 
-### Setting up Poetry
+## Architecture
 
-1. **Install Poetry** (if not already installed):
-   ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   ```
+The system implements a multi-layered architecture that combines durable workflow orchestration with intelligent agentic reasoning:
 
-2. **Install project dependencies**:
-   ```bash
-   poetry install
-   ```
-
-3. **Activate the virtual environment**:
-   ```bash
-   poetry shell
-   ```
-
-### Development Mode
-
-For local development without Docker:
-
-```bash
-# Terminal 1: Start Temporal (requires Temporal CLI)
-temporal server start-dev
-
-# Terminal 2: Start the worker
-poetry install
-poetry run python worker/main.py
-
-# Terminal 3: Start the API server
-poetry run python api/main.py
-
-# Terminal 4: Start the frontend
-cd frontend
-npm install
-npm run dev
+```mermaid
+flowchart TD
+    A[API Server] --> B[Simple Workflow]
+    B --> C[Agentic AI Workflow]
+    C --> D[React Agent Activity]
+    D --> E[React Agent]
+    E --> F[LLM]
+    F --> G[Tool Execution]
+    G --> H{Query Fully Answered?}
+    H -->|No| C
+    H -->|Yes| I[Extract Agent Activity]
+    I --> J[Extract Agent]
+    J --> K[LLM Summary]
+    K --> L[User Response]
+    
+    style C fill:#e1f5fe
+    style D fill:#f3e5f5
+    style I fill:#f3e5f5
+    style G fill:#fff3e0
 ```
 
-### Integration Tests
+### Key Components
 
-The main integration test is a plain Python program:
+- **API Server**: FastAPI endpoint handling chat requests
+- **Simple Workflow**: Temporal workflow orchestrating the entire process - will be replace with a more complex agentic workflow that does query classification and selects the appropriate agentic workflow.
+- **Agentic AI Workflow**: Custom DSPy-based reasoning loop with multi-step execution
+- **React Agent Activity**: Multi-iteration of the reason-act cycle with tool selection fed to the Tool Execution Activity
+- **Tool Execution Activity**: Tool execution for agent tool calling based on reasoning of the React Agent
+- **Extract Agent Activity**: Final synthesis and summary generation from the complete trajectory of actions and observations
+
+### Multi-Step Reasoning Process
+
+1. User message triggers the agentic workflow
+2. React Agent performs iterative reasoning cycles:
+   - **Reason**: Analyze current state and determine next action
+   - **Act**: Select and execute appropriate tools
+   - **Extract**: Collect results and observations and provide an observation
+   - **Observe**: The final answer to the users query.
+3. Loop continues until query is fully answered
+4. Extract Agent synthesizes final response from complete trajectory
+
+## Development Setup
+
+### Prerequisites
+- Docker and Docker Compose
+- Python 3.10+ with Poetry
+- Node.js 20+ (for frontend)
+
+### Local Development
 
 ```bash
-poetry run python integration_tests/test_weather_api.py
+# Install dependencies
+poetry install
+
+# Start Temporal (requires Temporal CLI)
+temporal server start-dev
+
+# Start worker, API, and frontend in separate terminals
+poetry run python worker/main.py
+poetry run python api/main.py
+cd frontend && npm install && npm run dev
 ```
 
 
 ## API Endpoints
 
 - `POST /chat` - Start a workflow with a message
-- `GET /workflow/{workflow_id}/status` - Get workflow status
+- `GET /workflow/{workflow_id}/status` - Get workflow status  
 - `GET /workflow/{workflow_id}/query` - Query workflow state
 - `GET /health` - Health check
 - `GET /docs` - API documentation
-
-## Activities
-
-The project includes several Temporal activities that demonstrate MCP (Model Context Protocol) integration patterns:
-
-### Available Activities
-
-**Highlight - Agentic AI Activities:**
-
-1. **react_agent_activity.py** ⭐
-   - The core of the agentic loop implementing DSPy ReAct patterns
-   - Executes single iterations of the Reason-Act cycle with tool selection and execution
-   - Maintains trajectory state across iterations for multi-step reasoning
-   - Located at: `activities/react_agent_activity.py`
-
-2. **extract_agent_activity.py** ⭐
-   - Synthesizes final answers from the accumulated trajectory of agent actions
-   - Uses DSPy Extract patterns to provide reasoning and conclusions
-   - Processes the complete agent execution history to generate coherent responses
-   - Located at: `activities/extract_agent_activity.py`
-
-**Standard MCP Integration Activities:**
-
-3. **weather_forecast_activity.py** 
-   - Calls forecast MCP server for weather predictions
-   - Returns formatted weather data for New York (3 days)
-   - Located at: `activities/weather_forecast_activity.py:12`
-
-4. **weather_historical_activity.py**
-   - Calls historical MCP server for past weather data
-   - Returns historical weather for Brisbane (yesterday's date)
-   - Located at: `activities/weather_historical_activity.py:11`
-
-5. **agricultural_activity.py**
-   - Calls agricultural MCP server for farming conditions  
-   - Returns soil moisture, evapotranspiration, and growing conditions
-   - Located at: `activities/agricultural_activity.py:10`
-
-6. **find_events_activity.py**
-   - Legacy activity with hardcoded tool execution
-   - Returns event information for Melbourne
-   - Located at: `activities/find_events_activity.py:12`
-
-### MCP Utilities
-
-The `activities/mcp_utils.py` module provides common utilities for all MCP activities:
-
-- **`get_user_display_name()`** - Extract display names for personalization
-- **`get_mcp_server_config()`** - Environment-based MCP server configuration
-- **`call_mcp_tool()`** - Generic MCP tool calling with error handling and logging
-- **`parse_mcp_result()`** - Parse MCP responses consistently across activities
-- **`create_error_response()`** - Generate standardized error responses
-
-### Activity Pattern
-
-All MCP activities follow a consistent pattern:
-```python
-@activity.defn
-async def activity_name(user_message: str, user_name: str = "anonymous") -> Dict[str, Any]:
-    try:
-        result = await call_mcp_tool(
-            service_name="service",
-            tool_name="tool_name", 
-            tool_args={"arg": "value"},
-            user_name=user_name
-        )
-        return {"message": "friendly response", "data": result}
-    except Exception as e:
-        return create_error_response(user_name, str(e))
-```
 
 ## Project Structure
 

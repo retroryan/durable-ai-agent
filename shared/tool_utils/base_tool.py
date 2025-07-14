@@ -59,6 +59,9 @@ class BaseTool(BaseModel, ABC):
     # Required: Pydantic model for argument validation.
     # All tools must define this model to specify their expected arguments.
     args_model: Type[BaseModel] = Field(..., exclude=True)
+    
+    # Configuration for mock behavior (default True to maintain current behavior)
+    mock_results: bool = Field(default=True, exclude=True)
 
     def __init_subclass__(cls, **kwargs):
         """

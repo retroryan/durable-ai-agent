@@ -43,7 +43,25 @@ class WeatherForecastTool(BaseTool):
     )
     args_model: Type[BaseModel] = ForecastRequest
 
-    def execute(self, latitude: float, longitude: float, days: int = 7) -> str:
+    def _mock_results(self, latitude: float, longitude: float, days: int = 7) -> str:
+        """Return simple mock weather forecast data."""
+        return f"""Weather Forecast for {latitude:.4f}, {longitude:.4f}
+Location: Location at {latitude:.4f}, {longitude:.4f}
+Forecast Period: {days} days
+
+Current Conditions:
+- Temperature: 20°C
+- Humidity: 65%
+- Wind Speed: 10 km/h
+- Precipitation: 0 mm
+
+Daily Forecast Summary:
+- 2025-01-15: High 23°C, Low 16°C, Precipitation 0mm
+- 2025-01-16: High 24°C, Low 17°C, Precipitation 1.2mm
+- 2025-01-17: High 22°C, Low 15°C, Precipitation 3.5mm"""
+
+    def _real_call(self, latitude: float, longitude: float, days: int = 7) -> str:
+        """Make real API call to get weather forecast data."""
         try:
             location_name = f"Location at {latitude:.4f}, {longitude:.4f}"
 
@@ -107,6 +125,12 @@ Daily Forecast Summary:"""
 
         except Exception as e:
             return f"Error retrieving weather forecast: {str(e)}"
+
+    def execute(self, latitude: float, longitude: float, days: int = 7) -> str:
+        if self.mock_results:
+            return self._mock_results(latitude, longitude, days)
+        else:
+            return self._real_call(latitude, longitude, days)
 
     def get_test_cases(self) -> list[dict]:
         return [

@@ -70,33 +70,36 @@ class AgenticAIWorkflow:
         )
 
         # Create response message
-        if final_answer.status == "success" and final_answer.answer:
-            response_message = f"Query processed for {user_name}. Answer: {final_answer.answer}"
+        workflow.logger.debug(f"[AgenticAIWorkflow] ExtractAgent result - Status: {final_answer.status}, Answer: '{final_answer.answer}', Answer type: {type(final_answer.answer)}")
+        
+        if final_answer.status == "success" and final_answer.answer is not None and str(final_answer.answer).strip():
+            # Return the clean, direct answer from ExtractAgent
+            response_message = final_answer.answer
             workflow.logger.info(
-                f"[AgenticAIWorkflow] Successfully extracted answer: {final_answer.answer}"
+                f"[AgenticAIWorkflow] Successfully extracted answer for {user_name}: {final_answer.answer}"
             )
         elif final_answer.status == "success":
-            # If extraction succeeded but no answer, return the latest tool result from trajectory
+            # If extraction succeeded but no answer, return the latest meaningful tool result from trajectory
             latest_observation = None
             for key in sorted(trajectory.keys(), reverse=True):
-                if key.startswith("observation_") and not trajectory[key].startswith("Error:"):
+                if key.startswith("observation_") and not trajectory[key].startswith("Error:") and trajectory[key] != "Completed.":
                     latest_observation = trajectory[key]
                     break
             
             if latest_observation:
-                response_message = f"Query processed for {user_name}. Result: {latest_observation}"
+                response_message = latest_observation
                 workflow.logger.info(
-                    f"[AgenticAIWorkflow] Using latest successful observation as answer"
+                    f"[AgenticAIWorkflow] Using latest meaningful observation as answer for {user_name}"
                 )
             else:
-                response_message = f"Query processed for {user_name}. Answer: No result found"
+                response_message = "No result found"
                 workflow.logger.warning(
-                    f"[AgenticAIWorkflow] No successful observations found in trajectory"
+                    f"[AgenticAIWorkflow] No meaningful observations found in trajectory for {user_name}"
                 )
         else:
-            response_message = f"Error processing query for {user_name}: {final_answer.error or 'Unknown error'}"
+            response_message = f"Error: {final_answer.error or 'Unknown error'}"
             workflow.logger.error(
-                f"[AgenticAIWorkflow] Failed to extract answer: {final_answer.error}"
+                f"[AgenticAIWorkflow] Failed to extract answer for {user_name}: {final_answer.error}"
             )
 
         # Log summary
@@ -169,8 +172,9 @@ class AgenticAIWorkflow:
             # Check if we're done
             if tool_name == "finish":
                 workflow.logger.info("[AgenticAIWorkflow] Agent selected 'finish' - task complete")
-                # Add final observation for finish
-                trajectory[f"observation_{current_iteration-1}"] = "Completed."
+                # Add final observation for finish to match demo behavior
+                idx = current_iteration - 1
+                trajectory[f"observation_{idx}"] = "Completed."
                 break
 
             # Execute the tool
@@ -181,9 +185,10 @@ class AgenticAIWorkflow:
                 current_iteration=current_iteration
             )
 
-            # Add tool result to trajectory
-            idx = current_iteration - 1
-            trajectory[f"observation_{idx}"] = tool_result.result if tool_result.success else f"Error: {tool_result.error}"
+            # Update trajectory with the one returned by tool execution
+            # The ToolExecutionActivity already added the observation
+            if tool_result.trajectory:
+                trajectory = tool_result.trajectory
             
             # Track tools used
             if tool_name and tool_name != "finish":
@@ -285,25 +290,30 @@ class AgenticAIWorkflow:
                 ),
             )
             
+            # Get the updated trajectory from the activity
+            updated_trajectory = result_dict.get("trajectory", trajectory)
+            
             # Convert dict to ToolExecutionResult
             if result_dict.get("status") == "success":
                 # Extract the observation for this iteration
                 idx = current_iteration - 1
                 observation_key = f"observation_{idx}"
-                result_text = result_dict["trajectory"].get(observation_key, "No result")
+                result_text = updated_trajectory.get(observation_key, "No result")
                 
                 result = ToolExecutionResult(
                     tool_name=tool_name,
                     success=True,
                     result=result_text,
-                    parameters=tool_args
+                    parameters=tool_args,
+                    trajectory=updated_trajectory
                 )
             else:
                 result = ToolExecutionResult(
                     tool_name=tool_name,
                     success=False,
                     error=result_dict.get("error", "Unknown error"),
-                    parameters=tool_args
+                    parameters=tool_args,
+                    trajectory=trajectory
                 )
             
             workflow.logger.info(
@@ -318,7 +328,8 @@ class AgenticAIWorkflow:
                 tool_name=tool_name,
                 success=False,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
+                trajectory=trajectory
             )
 
     async def _extract_final_answer(

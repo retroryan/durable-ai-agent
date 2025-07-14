@@ -67,9 +67,27 @@ class HistoricalWeatherTool(BaseTool):
     )
     args_model: Type[BaseModel] = HistoricalRequest
 
-    def execute(
-        self, latitude: float, longitude: float, start_date: str, end_date: str
-    ) -> str:
+    def _mock_results(self, latitude: float, longitude: float, start_date: str, end_date: str) -> str:
+        """Return simple mock historical weather data."""
+        return f"""Historical Weather Data for {latitude:.4f}, {longitude:.4f}
+Location: Location at {latitude:.4f}, {longitude:.4f}
+Period: {start_date} to {end_date}
+
+Daily Historical Summary:
+
+{start_date}:
+- Temperature: High 22°C, Low 15°C
+- Precipitation: 2.5mm
+- Max Wind Speed: 15 km/h
+- Max UV Index: 6
+
+Period Summary:
+- Average High: 22.0°C
+- Average Low: 15.0°C
+- Total Precipitation: 2.5mm"""
+
+    def _real_call(self, latitude: float, longitude: float, start_date: str, end_date: str) -> str:
+        """Make real API call to get historical weather data."""
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -168,6 +186,14 @@ Daily Historical Summary:"""
 
         except Exception as e:
             return f"Error retrieving historical weather: {str(e)}"
+
+    def execute(
+        self, latitude: float, longitude: float, start_date: str, end_date: str
+    ) -> str:
+        if self.mock_results:
+            return self._mock_results(latitude, longitude, start_date, end_date)
+        else:
+            return self._real_call(latitude, longitude, start_date, end_date)
 
     def get_test_cases(self) -> list[dict]:
         week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")

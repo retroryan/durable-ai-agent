@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based distributed workflow application demonstrating durable AI conversation patterns using Temporal. The project uses FastAPI for the API server, Temporal for workflow orchestration, and Docker Compose for containerized deployment.
+This is a Python-based distributed workflow application demonstrating durable AI conversation patterns using Temporal, with a **Custom Built Agentic AI Loop using DSPy and Multi-Step Reasoning**. The project implements a React (Reason-Act) pattern for intelligent tool selection and execution, using FastAPI for the API server, Temporal for workflow orchestration, and Docker Compose for containerized deployment.
 
 **IMPORTANT: This is a DEMO project designed for simplicity and clarity.** The goal is to maintain a clean, modular, and easy-to-understand codebase that demonstrates core concepts. This is NOT a complex production implementation. When making changes:
 - Prioritize simplicity and readability over complex optimizations
@@ -101,14 +101,27 @@ The application follows a microservices architecture with these key components:
 
 1. **API Server** (`api/`) - FastAPI application providing REST endpoints for workflow management
 2. **Worker** (`worker/`) - Processes Temporal workflows and activities
-3. **Workflows** (`workflows/`) - Durable workflow definitions (SimpleAgentWorkflow)
-4. **Activities** (`activities/`) - Atomic units of work with MCP integrations
-5. **Tools** (`tools/`) - Reusable tool implementations (find_events)
-6. **MCP Proxy** (`mcp_proxy/`) - Unified proxy server combining multiple weather services
+3. **Workflows** (`workflows/`) - Durable workflow definitions
+   - `SimpleAgentWorkflow` - Main workflow that routes messages
+   - `AgenticAIWorkflow` - Implements React reasoning loop for complex queries
+4. **Activities** (`activities/`) - Atomic units of work
+   - `ReactAgentActivity` - Performs reasoning and tool selection
+   - `ToolExecutionActivity` - Executes selected tools
+   - `ExtractAgentActivity` - Synthesizes final answers from reasoning trajectory
+5. **Agentic Loop** (`agentic_loop/`) - DSPy-based reasoning components
+   - `ReactAgent` - Implements thought → action → observation cycles
+   - `ExtractAgent` - Extracts coherent answers from trajectories
+6. **Tools** (`tools/`) - Modular tool implementations
+   - `ToolRegistry` - Dynamic tool management system
+   - `precision_agriculture/` - Weather and farming-specific tools
+7. **MCP Proxy** (`mcp_proxy/`) - Unified proxy server combining multiple weather services
 
 ### Key Design Patterns
 
 - **Workflow Pattern**: Each conversation is a long-running Temporal workflow that maintains state
+- **Agentic Reasoning**: React pattern with trajectory-based state management
+- **Tool Registry**: Dynamic tool selection based on query context
+- **Child Workflows**: Complex queries spawn specialized child workflows
 - **Message Processing**: Messages are processed through activities with automatic retry and error handling
 - **Query Pattern**: Workflow state can be queried at any time without affecting execution
 - **Signal Pattern**: New messages are sent to workflows via signals
@@ -119,15 +132,65 @@ The application follows a microservices architecture with these key components:
 - `GET /workflow/{workflow_id}/status` - Check workflow execution status
 - `GET /workflow/{workflow_id}/query` - Query current workflow state
 
+## Agentic AI Loop Architecture
+
+The project implements a sophisticated React (Reason-Act) pattern for intelligent tool selection and execution:
+
+### Core Components
+
+1. **AgenticAIWorkflow** (`workflows/agentic_ai_workflow.py`)
+   - Orchestrates the reasoning loop
+   - Maintains trajectory state across iterations
+   - Limits iterations to prevent infinite loops
+   - Returns structured responses with reasoning transparency
+
+2. **ReactAgentActivity** (`activities/react_agent_activity.py`)
+   - Performs reasoning cycles (thought → action → observation)
+   - Uses DSPy's React pattern for tool selection
+   - Returns tool name and arguments for execution
+
+3. **ToolExecutionActivity** (`activities/tool_execution_activity.py`)
+   - Executes tools selected by the React agent
+   - Updates trajectory with observations
+   - Handles tool errors gracefully
+
+4. **ExtractAgentActivity** (`activities/extract_agent_activity.py`)
+   - Synthesizes final answers from complete trajectories
+   - Uses DSPy's extraction patterns
+   - Provides coherent responses based on reasoning history
+
+### Trajectory-Based State Management
+
+The system maintains a "trajectory" dictionary that captures the entire reasoning process:
+- `thought_{idx}`: The agent's reasoning at each step
+- `tool_name_{idx}`: Selected tool for the step
+- `tool_args_{idx}`: Arguments passed to the tool
+- `observation_{idx}`: Tool execution results
+
+This provides full transparency and debuggability of the AI's reasoning process.
+
+### Tool Registry System
+
+- **Dynamic Tool Management**: Tools are registered and selected based on configuration
+- **Tool Sets**: Different domains have different tool sets (e.g., "agriculture")
+- **Modular Design**: Easy to add new tools without modifying core logic
+
+### Precision Agriculture Tools
+
+New weather and farming-specific tools in `tools/precision_agriculture/`:
+- **WeatherForecastTool**: Get weather predictions for locations
+- **HistoricalWeatherTool**: Access past weather data
+- **AgriculturalWeatherTool**: Get farming-specific weather conditions
+
 ## Activities and MCP Integration
 
-The project includes several Temporal activities that integrate with MCP (Model Context Protocol) servers:
+The project includes several Temporal activities:
 
-### Available Activities
+### Core Activities
 
-1. **weather_forecast_activity.py** - Calls forecast MCP server for weather predictions
-2. **weather_historical_activity.py** - Calls historical MCP server for past weather data  
-3. **agricultural_activity.py** - Calls agricultural MCP server for farming conditions
+1. **react_agent_activity.py** - Reasoning and tool selection using DSPy
+2. **tool_execution_activity.py** - Executes tools and updates trajectory
+3. **extract_agent_activity.py** - Synthesizes final answers from trajectories
 4. **find_events_activity.py** - Legacy activity for event finding (hardcoded tool)
 
 ### MCP Utilities (`activities/mcp_utils.py`)
@@ -171,12 +234,21 @@ poetry run python integration_tests/test_proxy_integration.py
 ./mcp_proxy/stop_docker.sh
 ```
 
+## Workflow Routing and Magic Words
+
+The `SimpleAgentWorkflow` acts as a router for different reasoning patterns:
+- Messages starting with "weather:" trigger the `AgenticAIWorkflow` as a child workflow
+- This demonstrates how different query types can use different reasoning strategies
+- Future enhancement: Use a classification agent to automatically select appropriate tool sets
+
 ## Important Notes
 
 - Always ensure docker-compose services are running before integration tests
 - The project uses Poetry for dependency management - avoid pip install
 - Type hints are enforced - run `poetry run poe lint-types` before committing
 - Frontend components (Phase 4) are not yet implemented
+- The trajectory flow has been carefully designed to avoid double-writes (see trajectory-in-depth.md)
+- Tool registry supports mock results for testing (`mock_results=True` by default)
 
 
 ## Critical Architecture Guidelines

@@ -56,9 +56,11 @@ async def main():
         print("-" * 40)
         
         user_name = f"test_user_{uuid.uuid4().hex[:8]}"
-        print(f"Sending: '{test_case.request}' from user: {user_name}")
+        # Prepend "weather:" to all queries to trigger the weather workflow
+        weather_request = f"weather: {test_case.request}"
+        print(f"Sending: '{weather_request}' from user: {user_name}")
 
-        response = await call_chat_api(test_case.request, user_name=user_name)
+        response = await call_chat_api(weather_request, user_name=user_name)
         print("\nResponse:")
         print(json.dumps(response, indent=2))
 

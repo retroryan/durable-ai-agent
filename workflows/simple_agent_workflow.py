@@ -41,9 +41,11 @@ class SimpleAgentWorkflow:
         workflow.logger.info(f"[SimpleAgentWorkflow] Query count: {self.query_count}")
 
         # Route to appropriate activity based on user message content
-        if "weather" in user_message.lower():
+        if user_message.lower().startswith("weather:"):
+            # Extract the query after "weather:"
+            query = user_message[8:].strip()  # Remove "weather:" prefix and trim whitespace
             workflow.logger.info(
-                f"[SimpleAgentWorkflow] Weather keyword detected in message: '{user_message}'"
+                f"[SimpleAgentWorkflow] Weather prefix detected, extracted query: '{query}'"
             )
             workflow.logger.info(
                 f"[SimpleAgentWorkflow] Executing child workflow AgenticAIWorkflow for user '{user_name}'"
@@ -59,7 +61,7 @@ class SimpleAgentWorkflow:
                 child_result = await workflow.execute_child_workflow(
                     AgenticAIWorkflow,
                     args=[
-                        "What was the weather like in San Francisco from 2025-06-06 to 2025-06-13?",
+                        query,
                         user_name,
                     ],
                     id=child_workflow_id,

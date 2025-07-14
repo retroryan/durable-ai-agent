@@ -46,13 +46,43 @@ class AgriculturalWeatherTool(BaseTool):
     )
     args_model: Type[BaseModel] = AgriculturalRequest
 
-    def execute(
+    def _mock_results(
         self,
         latitude: float,
         longitude: float,
         days: int = 7,
         crop_type: Optional[str] = None,
     ) -> str:
+        """Return simple mock agricultural weather data."""
+        location_name = f"Agricultural location at {latitude:.4f}, {longitude:.4f}"
+        if crop_type:
+            location_name += f" ({crop_type} farming)"
+            
+        return f"""Agricultural Conditions for {latitude:.4f}, {longitude:.4f}
+Location: {location_name}
+Forecast Period: {days} days
+
+Current Soil Conditions:
+- Surface (0-1cm): 25.5% moisture
+- Shallow (1-3cm): 28.2% moisture
+- Root Zone (3-9cm): 32.1% moisture
+- Deep (9-27cm): 35.8% moisture
+
+Daily Agricultural Summary:
+- 2025-01-15:
+  Temperature: 24/16°C
+  Precipitation: 0mm
+  Evapotranspiration: 3.2mm
+  Vapor Pressure Deficit: 1.2kPa"""
+
+    def _real_call(
+        self,
+        latitude: float,
+        longitude: float,
+        days: int = 7,
+        crop_type: Optional[str] = None,
+    ) -> str:
+        """Make real API call to get agricultural weather data."""
         try:
             location_name = f"Agricultural location at {latitude:.4f}, {longitude:.4f}"
             if crop_type:
@@ -145,6 +175,18 @@ Current Soil Conditions:"""
 
         except Exception as e:
             return f"Error retrieving agricultural conditions: {str(e)}"
+
+    def execute(
+        self,
+        latitude: float,
+        longitude: float,
+        days: int = 7,
+        crop_type: Optional[str] = None,
+    ) -> str:
+        if self.mock_results:
+            return self._mock_results(latitude, longitude, days, crop_type)
+        else:
+            return self._real_call(latitude, longitude, days, crop_type)
 
     def get_test_cases(self) -> list[dict]:
         return [

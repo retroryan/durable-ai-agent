@@ -38,10 +38,11 @@ async def main():
     llm_config = LLMConfig.from_env()
     setup_llm(llm_config)
 
-    # Create tool registry
+    # Create tool registry with mock configuration
     tool_set_name = os.getenv("TOOL_SET", "agriculture")
-    registry = create_tool_set_registry(tool_set_name)
-    logging.info(f"Tool registry created for tool set: {tool_set_name}")
+    tools_mock = os.getenv("TOOLS_MOCK", "true").lower() == "true"
+    registry = create_tool_set_registry(tool_set_name, mock_results=tools_mock)
+    logging.info(f"Tool registry created for tool set: {tool_set_name} (mock_results={tools_mock})")
 
     # Initialize the Agentic React Agent here
     tool_set_signature = registry.get_react_signature()
@@ -82,9 +83,8 @@ async def main():
         
         extract_signature = ExtractSignature
     
-    extract_agent = ReactExtract(signature=extract_signature)
-    extract_agent_activity = ExtractAgentActivity(extract_agent)
-    logging.info(f"ExtractAgent activity created with pre-initialized agent")
+    extract_agent_activity = ExtractAgentActivity()
+    logging.info(f"ExtractAgent activity created with AnswerExtractionSignature")
 
     tool_execution_activity = ToolExecutionActivity(tool_registry=registry)
     logging.info(f"ToolExecutionActivity initialized with tool registry")

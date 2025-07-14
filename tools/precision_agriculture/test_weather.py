@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Comprehensive test for all weather tools.
-Tests the real Open-Meteo API integration for all weather tools.
+Tests mock responses by default, use --real to test actual API integration.
 Outputs only JSON responses.
 """
 
@@ -13,13 +13,13 @@ from datetime import datetime, timedelta
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
 
-from tools.weather.agricultural_weather import AgriculturalWeatherTool
-from tools.weather.historical_weather import HistoricalWeatherTool
-from tools.weather.weather_forecast import WeatherForecastTool
+from tools.precision_agriculture.agricultural_weather import AgriculturalWeatherTool
+from tools.precision_agriculture.historical_weather import HistoricalWeatherTool
+from tools.precision_agriculture.weather_forecast import WeatherForecastTool
 
 
-def test_historical_weather():
-    """Test historical weather tool with real API call."""
+def test_historical_weather(use_real=False):
+    """Test historical weather tool."""
     # Create tool instance
     tool = HistoricalWeatherTool()
 
@@ -35,22 +35,20 @@ def test_historical_weather():
     end_date_str = end_date.strftime("%Y-%m-%d")
 
     try:
-        # Execute the tool
         result = tool.execute(
             latitude=latitude,
             longitude=longitude,
             start_date=start_date_str,
             end_date=end_date_str,
+            mock_answer=not use_real,
         )
-
         return {"tool": "get_historical_weather", "success": True, "response": result}
-
     except Exception as e:
         return {"tool": "get_historical_weather", "success": False, "error": str(e)}
 
 
-def test_weather_forecast():
-    """Test weather forecast tool with real API call."""
+def test_weather_forecast(use_real=False):
+    """Test weather forecast tool."""
     # Create tool instance
     tool = WeatherForecastTool()
 
@@ -60,17 +58,16 @@ def test_weather_forecast():
     days = 7
 
     try:
-        # Execute the tool
-        result = tool.execute(latitude=latitude, longitude=longitude, days=days)
-
+        result = tool.execute(
+            latitude=latitude, longitude=longitude, days=days, mock_answer=not use_real
+        )
         return {"tool": "get_weather_forecast", "success": True, "response": result}
-
     except Exception as e:
         return {"tool": "get_weather_forecast", "success": False, "error": str(e)}
 
 
-def test_agricultural_weather():
-    """Test agricultural weather tool with real API call."""
+def test_agricultural_weather(use_real=False):
+    """Test agricultural weather tool."""
     # Create tool instance
     tool = AgriculturalWeatherTool()
 
@@ -81,17 +78,18 @@ def test_agricultural_weather():
     crop_type = "corn"
 
     try:
-        # Execute the tool
         result = tool.execute(
-            latitude=latitude, longitude=longitude, days=days, crop_type=crop_type
+            latitude=latitude,
+            longitude=longitude,
+            days=days,
+            crop_type=crop_type,
+            mock_answer=not use_real,
         )
-
         return {
             "tool": "get_agricultural_conditions",
             "success": True,
             "response": result,
         }
-
     except Exception as e:
         return {
             "tool": "get_agricultural_conditions",
@@ -100,18 +98,19 @@ def test_agricultural_weather():
         }
 
 
-def test_all_weather_tools():
+def test_all_weather_tools(use_real=False):
     """Test all weather tools and return overall success status."""
     results = []
 
     # Test all tools
-    results.append(test_historical_weather())
-    results.append(test_weather_forecast())
-    results.append(test_agricultural_weather())
+    results.append(test_historical_weather(use_real))
+    results.append(test_weather_forecast(use_real))
+    results.append(test_agricultural_weather(use_real))
 
     # Create summary
     summary = {
         "test_run_timestamp": datetime.now().isoformat(),
+        "test_mode": "real" if use_real else "mock",
         "total_tests": len(results),
         "passed_tests": sum(1 for r in results if r["success"]),
         "failed_tests": sum(1 for r in results if not r["success"]),
@@ -124,5 +123,7 @@ def test_all_weather_tools():
 
 
 if __name__ == "__main__":
-    success = test_all_weather_tools()
+    # Check for --real flag
+    use_real = "--real" in sys.argv
+    success = test_all_weather_tools(use_real)
     sys.exit(0 if success else 1)
