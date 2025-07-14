@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from temporalio import activity
 
-from tools import find_events
+from tools.find_events import find_events
 
 
 @activity.defn

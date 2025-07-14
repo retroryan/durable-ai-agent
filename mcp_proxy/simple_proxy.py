@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 
 def create_unified_proxy():
     """Create a unified proxy that combines all weather services."""
-    # Import the service modules
-    from mcp_proxy.services import current_server, forecast_server, historical_server
+    # Import the service modules from mcp_servers
+    from mcp_servers import agricultural_server, forecast_server, historical_server
 
     # Create the main proxy server
     proxy = FastMCP("UnifiedWeatherProxy")
 
     # Mount each service with a prefix
     proxy.mount("forecast", forecast_server.server)
-    proxy.mount("current", current_server.server)
+    proxy.mount("agricultural", agricultural_server.server)
     proxy.mount("historical", historical_server.server)
 
     logger.info("Created unified proxy with all weather services")

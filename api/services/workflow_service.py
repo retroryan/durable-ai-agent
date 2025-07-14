@@ -6,8 +6,9 @@ from typing import Optional
 from temporalio.client import Client, WorkflowHandle
 from temporalio.service import RPCError
 
-from models.types import Response, WorkflowState
+from models.types import ActivityStatus, Response, WorkflowState
 from workflows import SimpleAgentWorkflow
+from workflows.agentic_ai_workflow import AgenticAIWorkflow
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ class WorkflowService:
         # Create workflow state
         state = WorkflowState(
             workflow_id=workflow_id,
-            status="completed",
+            status=ActivityStatus.COMPLETED,
             query_count=query_count,
             last_response=result,
         )
@@ -167,3 +168,61 @@ class WorkflowService:
                 f"Error getting status for workflow_id: {workflow_id}, error: {e}"
             )
             return f"Error: {str(e)}"
+    
+    async def get_ai_workflow_details(self, workflow_id: str) -> Optional[dict]:
+        """
+        Get detailed state information from an AgenticAIWorkflow.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            Dictionary with workflow details or None if not found
+        """
+        try:
+            # For AI workflows, the ID pattern includes "agentic-ai-weather-"
+            handle = self.client.get_workflow_handle(workflow_id)
+            return await handle.query(AgenticAIWorkflow.get_workflow_details)
+        except Exception as e:
+            logger.error(
+                f"Error getting AI workflow details for workflow_id: {workflow_id}, error: {e}"
+            )
+            return None
+    
+    async def get_ai_workflow_trajectory(self, workflow_id: str) -> Optional[dict]:
+        """
+        Get the trajectory from an AgenticAIWorkflow.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            Trajectory dictionary or None if not found
+        """
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            return await handle.query(AgenticAIWorkflow.get_trajectory)
+        except Exception as e:
+            logger.error(
+                f"Error getting AI workflow trajectory for workflow_id: {workflow_id}, error: {e}"
+            )
+            return None
+    
+    async def get_ai_workflow_tools(self, workflow_id: str) -> Optional[list]:
+        """
+        Get the list of tools used by an AgenticAIWorkflow.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            List of tools used or None if not found
+        """
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            return await handle.query(AgenticAIWorkflow.get_tools_used)
+        except Exception as e:
+            logger.error(
+                f"Error getting AI workflow tools for workflow_id: {workflow_id}, error: {e}"
+            )
+            return None

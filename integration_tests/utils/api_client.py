@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from models.types import ActivityStatus
+
 
 class DurableAgentAPIClient:
     """HTTP client wrapper for interacting with the durable AI agent API."""
@@ -51,6 +53,7 @@ class DurableAgentAPIClient:
         self,
         message: str,
         workflow_id: Optional[str] = None,
+        user_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send a chat message to start or continue a workflow.
@@ -58,6 +61,7 @@ class DurableAgentAPIClient:
         Args:
             message: The message to send
             workflow_id: Optional workflow ID to continue existing workflow
+            user_name: Optional user name for the workflow
 
         Returns:
             Workflow state response
@@ -65,6 +69,8 @@ class DurableAgentAPIClient:
         payload = {"message": message}
         if workflow_id:
             payload["workflow_id"] = workflow_id
+        if user_name:
+            payload["user_name"] = user_name
 
         response = await self.client.post(
             f"{self.base_url}/chat",
@@ -130,7 +136,7 @@ class DurableAgentAPIClient:
         while asyncio.get_event_loop().time() - start_time < timeout:
             status = await self.get_workflow_status(workflow_id)
 
-            if status.get("status") == "completed":
+            if status.get("status") == ActivityStatus.COMPLETED:
                 return status
 
             await asyncio.sleep(poll_interval)

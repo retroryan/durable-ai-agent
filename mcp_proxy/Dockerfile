@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY mcp_proxy/ ./mcp_proxy/
+COPY mcp_servers/ ./mcp_servers/
 
 # Expose port
 EXPOSE 8000

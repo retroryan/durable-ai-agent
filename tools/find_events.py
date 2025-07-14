@@ -1,20 +1,56 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict
+
+from .validators import FieldType, FieldValidator, optional_string, validate_args
 
 
-def find_events(args: dict) -> dict:
-    search_city = args.get("city", "").lower()
-    search_month = args.get("month", "").capitalize()
+def find_events(args: Dict[str, Any]) -> Dict[str, Any]:
+    # Define validation rules
+    validators = [
+        optional_string("city"),
+        FieldValidator(
+            "month",
+            FieldType.STRING,
+            required=False,
+            default="",
+            custom_validator=lambda m: not m
+            or m.capitalize()
+            in [
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+            ],
+            error_message="Invalid month. Please provide a valid month name (e.g., 'January')",
+        ),
+    ]
+
+    # Validate arguments
+    validated = validate_args(args, validators)
+    if "error" in validated:
+        return validated
+
+    search_city = validated["city"].lower()
+    search_month = validated["month"].capitalize()
 
     file_path = Path(__file__).resolve().parent / "data" / "find_events_data.json"
     if not file_path.exists():
         return {"error": "Data file not found."}
 
-    try:
+    if search_month:
         month_number = datetime.strptime(search_month, "%B").month
-    except ValueError:
-        return {"error": "Invalid month provided."}
+    else:
+        return {"error": "Month is required."}
 
     # Helper to wrap months into [1..12]
     def get_adjacent_months(m):

@@ -1,14 +1,32 @@
-# Durable AI Agent
+# Durable AI Agent - A Fundamental Evolution in AI Agents
 
-A simplified demonstration of durable AI conversations using Temporal workflows. This project shows how to build reliable, persistent workflows without complex AI logic.
+The durable-ai-agent represents a fundamental evolution in building reliable AI agents. By combining DSPy's context engineering, Temporal's durable execution, and modern MCP integration, it demonstrates how to build production-ready agentic AI applications with fully automated agent-driven tool execution that can handle complex, multi-step reasoning tasks while maintaining reliability and transparency.
 
-## Overview
+This project goes beyond traditional AI applications that rely on brittle prompt engineering and fragile execution patterns. Instead, it showcases a robust architecture where AI agents don't just generate responses—they reason through problems systematically, select and execute appropriate tools autonomously, and maintain their state even through system failures or long-running operations. Every decision is traceable, every action is durable, and every interaction builds upon previous context in a way that mirrors human problem-solving.
 
-This project is a minimal implementation that:
-- Demonstrates Temporal workflow patterns
-- Shows activity execution with retry logic
-- Maintains state across workflow restarts
-- Provides a clean foundation for extension
+The power comes from bringing together three cutting-edge technologies:
+- **DSPy's Context Engineering**: Move beyond brittle prompts to structured, type-safe reasoning with declarative signatures and automatic optimization
+- **Temporal's Durable Execution**: Ensure your AI agents survive failures, restarts, and long-running operations with automatic state persistence and retry logic
+- **Modern MCP Integration**: Seamlessly connect to tools and services with both stdio and HTTP transports, enabling rich tool ecosystems
+
+The result is an AI system that not only thinks and reasons like modern LLMs but also executes reliably like production software—bridging the gap between experimental AI and enterprise-ready applications. This is what makes it possible to deploy AI agents that can be trusted with real-world tasks, from analyzing agricultural conditions to orchestrating complex multi-step workflows.
+
+**Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy Overview](DSPy Overview.md)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
+
+**Multi-Step Reasoning**: Each iteration includes structured thought-action-observation cycles. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
+
+**Tool Integration**: The system includes precision agriculture tool sets that currently call the Open Meteo API directly. MCP (Model Context Protocol) servers are already built and will be set up shortly for enhanced tool integration.
+
+**Temporal Foundation**: Provides durable execution with automatic retry, state persistence, and fault tolerance. Workflows can be long-running conversations that survive system restarts.
+
+> **Note**: For detailed architecture information and how this project represents a significant evolution over traditional AI applications, see [DURABLE_AI_OVERVIEW.md](DURABLE_AI_OVERVIEW.md).
+
+## Sample Output
+
+- [Agentic Loop Sample Run](Agentic Loop Sample Run.md) - Example of the full agentic reasoning process
+- [Agriculture Query Samples](Agriculture Query Samples.md) - Sample agricultural weather queries and responses
+- [MCP Proxy Server Routing](MCP Proxy Server Routing.md) - How the proxy routes between weather services
+- [View Client Screenshot](sample_client_screen_shoot.png) - Visual interface demonstration
 
 ## Quick Start
 
@@ -18,42 +36,26 @@ This project is a minimal implementation that:
 - Node.js 20+ (for frontend development)
 - Poetry (for Python dependency management)
 
-### Setting up Poetry
-
-1. **Install Poetry** (if not already installed):
-   ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   ```
-
-2. **Install project dependencies**:
-   ```bash
-   poetry install
-   ```
-
-3. **Activate the virtual environment**:
-   ```bash
-   poetry shell
-   ```
-
-## Architecture
-
-The system consists of:
-- **Workflow**: Simple workflow that tracks query count and executes activities
-- **Activity**: Calls a hardcoded tool (find_events) with fixed parameters
-- **API**: FastAPI server for workflow management
+**System Components:**
+- **Workflow**: Durable workflows that track state and orchestrate agentic AI loops
+- **Activities**: Atomic units including React agent iterations, tool execution, and result extraction
+- **API**: FastAPI server for workflow management and chat interface
 - **Frontend**: React UI for chat interaction
+- **Worker**: Processes Temporal workflows and activities with integrated agentic loops
 
 
-### Running the Complete System
+### Running the Complete System (Recommended)
 
-1. **Set up environment**
+1. **Set up environment files**
    ```bash
    cp .env.example .env
+   cp worker.env .worker.env
    ```
+   **Note**: Make sure `.worker.env` is copied from `worker.env` and is not in the samples. The existing `.env` file should remain as is.
 
-2. **Start all services with Docker Compose**
+2. **Start all services with the convenience script**
    ```bash
-   docker-compose up
+   ./run_docker.sh
    ```
 
 3. **Access the applications**
@@ -74,295 +76,113 @@ Docker Compose will start the following services:
 
 ### Using the Chat Interface
 
-1. Open http://localhost:3000 in your browser
+1. Open http://localhost:3000 in your browser - it generates a random user name for now.
 2. Type a message in the input field
-3. The system will:
-   - Create a new Temporal workflow
-   - Execute the find_events activity
-   - Return information about events in Melbourne
+3. The system supports several types of messages of magic string messages (currently hard-coded in workflows/simple_agent_workflow.py):
+   - **"weather:"** - For example try "weather: Are conditions good for planting corn in Ames, Iowa?".  Triggers the full agentic workflow with a fully custom agentic loop modeled off DSPy React. This includes multi-step reasoning, tool selection, action execution, and result synthesis. Currently it is hard-coded to use the tool set from the worker.env configuration. In the future, the first call could be a classification agent which decides which tool set(s) to use.
+   - **"historical"** - Calls the weather historical activity for past weather data
+   - **"agriculture"** - Calls the agricultural activity for farming conditions
+   - **Any other message** - Defaults to the find_events activity
+
 4. The workflow ID and status are displayed in the header
 5. Click "New Conversation" to start a fresh workflow
 
-### Development Mode
+## Architecture
 
-For local development without Docker:
+The system implements a multi-layered architecture that combines durable workflow orchestration with intelligent agentic reasoning:
 
-```bash
-# Terminal 1: Start Temporal (requires Temporal CLI)
-temporal server start-dev
-
-# Terminal 2: Start the worker
-poetry install
-poetry run python worker/main.py
-
-# Terminal 3: Start the API server
-poetry run python api/main.py
-
-# Terminal 4: Start the frontend
-cd frontend
-npm install
-npm run dev
+```mermaid
+flowchart TD
+    A[API Server] --> B[Simple Workflow]
+    B --> C[Agentic AI Workflow]
+    C --> D[React Agent Activity]
+    D --> E[React Agent]
+    E --> F[LLM]
+    F --> G[Tool Execution]
+    G --> H{Query Fully Answered?}
+    H -->|No| C
+    H -->|Yes| I[Extract Agent Activity]
+    I --> J[Extract Agent]
+    J --> K[LLM Summary]
+    K --> L[User Response]
+    
+    style C fill:#e1f5fe
+    style D fill:#f3e5f5
+    style I fill:#f3e5f5
+    style G fill:#fff3e0
 ```
 
-## Running Tests
+### Key Components
 
-The project includes comprehensive test suites covering unit tests, API integration tests, and MCP integration tests.
+- **API Server**: FastAPI endpoint handling chat requests
+- **Simple Workflow**: Temporal workflow orchestrating the entire process - will be replace with a more complex agentic workflow that does query classification and selects the appropriate agentic workflow.
+- **Agentic AI Workflow**: Custom DSPy-based reasoning loop with multi-step execution
+- **React Agent Activity**: Multi-iteration of the reason-act cycle with tool selection fed to the Tool Execution Activity
+- **Tool Execution Activity**: Tool execution for agent tool calling based on reasoning of the React Agent
+- **Extract Agent Activity**: Final synthesis and summary generation from the complete trajectory of actions and observations
+
+### Multi-Step Reasoning Process
+
+1. User message triggers the agentic workflow
+2. React Agent performs iterative reasoning cycles:
+   - **Reason**: Analyze current state and determine next action
+   - **Act**: Select and execute appropriate tools
+   - **Extract**: Collect results and observations and provide an observation
+   - **Observe**: The final answer to the users query.
+3. Loop continues until query is fully answered
+4. Extract Agent synthesizes final response from complete trajectory
+
+### MCP (Model Context Protocol) Integration
+
+The MCP client management and servers are complete with full integration testing. The system includes:
+
+- **MCP Servers**: Three specialized weather services (forecast, current, historical)
+- **Unified Proxy**: Single endpoint combining all services via FastMCP
+- **Client Utilities**: Robust error handling and standardized response parsing
+- **Integration Tests**: Comprehensive testing for both individual services and proxy
+
+**Note**: The only remaining piece is to create tools that call the MCP servers from within the agentic workflow. The infrastructure is fully operational and tested.
+
+### Proxy Architecture
+
+The proxy uses FastMCP's built-in features for elegant service composition:
+- `FastMCP.mount()` to combine multiple services into a unified interface
+- `proxy.run(transport="streamable-http")` for HTTP transport protocol
+- Automatic session management and protocol handling
+- Full MCP protocol support with minimal code overhead
+
+This simple approach reduces complexity while providing complete functionality - the entire proxy implementation is about 20 lines of code compared to hundreds in traditional approaches.
+
+## Development Setup
 
 ### Prerequisites
-1. Install Poetry: `pip install poetry`
-2. Install dependencies: `poetry install`
-3. Create .env file: `cp .env.example .env`
+- Docker and Docker Compose
+- Python 3.10+ with Poetry
+- Node.js 20+ (for frontend)
 
-### Unit Tests
-```bash
-# Run unit tests
-poetry run pytest tests/
-
-# Run with verbose output
-poetry run pytest tests/ -v
-```
-
-### Integration Tests
-
-The project has two types of integration tests:
-
-#### 1. API Integration Tests (pytest-based)
-These test the API endpoints and workflow functionality through HTTP requests.
-
-#### 2. MCP Integration Tests (direct Python programs)
-These test MCP client functionality and are **intentionally direct Python programs (not pytest)** to avoid complexity and issues with async test runners and connection pooling.
-
-### Running All Integration Tests
-
-**Quick Start - Run Everything**:
-```bash
-# 1. Start all services
-docker-compose up -d
-
-# 2. Run all integration tests (API + MCP)
-python integration_tests/run_integration_tests.py
-
-# 3. Clean up
-docker-compose down
-```
-
-**Integration Test Runner Options**:
-```bash
-# Run all tests (API + MCP)
-python integration_tests/run_integration_tests.py
-
-# Skip HTTP-based MCP tests (stdio only)
-python integration_tests/run_integration_tests.py --no-http
-
-# Skip API tests (MCP only)
-python integration_tests/run_integration_tests.py --no-api
-
-# Run only MCP tests
-python integration_tests/run_integration_tests.py --mcp-only
-```
-
-### Running Individual Test Suites
-
-#### API Integration Tests (pytest-based)
-**Prerequisites**: Full stack must be running (`docker-compose up`)
+### Local Development
 
 ```bash
-# Run all API integration tests
-poetry run pytest integration_tests/ -v
+# Install dependencies
+poetry install
 
-# Run specific test files
-poetry run pytest integration_tests/test_api_endpoints.py -v
-poetry run pytest integration_tests/test_workflow_integration.py -v
+# Start Temporal (requires Temporal CLI)
+temporal server start-dev
 
-# Run by test category
-poetry run pytest integration_tests/ -m api -v
-poetry run pytest integration_tests/ -m workflow -v
-
-# Run with custom API URL
-API_URL=http://localhost:8001 poetry run pytest integration_tests/ -v
+# Start worker, API, and frontend in separate terminals
+poetry run python worker/main.py
+poetry run python api/main.py
+cd frontend && npm install && npm run dev
 ```
 
-**API Test Coverage**:
-- ✅ Health and root endpoints
-- ✅ Chat endpoint workflow creation
-- ✅ Workflow status and query endpoints
-- ✅ Error handling (404, 422 responses)
-- ✅ Workflow lifecycle management
-- ✅ Query count persistence
-- ✅ Multiple workflow isolation
-- ✅ Concurrent workflow execution
-
-#### MCP Integration Tests (direct Python programs)
-
-**Why direct Python programs?**
-- Pytest's async handling conflicts with MCP client event loops
-- Connection pooling issues when running multiple tests
-- Simpler debugging and clearer error messages
-- Direct control over test execution and cleanup
-
-**Running Individual MCP Tests**:
-```bash
-# Run individual tests directly (each loads .env independently)
-python integration_tests/test_stdio_client.py
-python integration_tests/test_http_client.py  # Requires HTTP server running
-```
-
-**MCP Test Coverage**:
-- ✅ Stdio client connection and tool invocation
-- ✅ HTTP client connection and tool invocation
-- ✅ Connection reuse and cleanup
-- ✅ Multiple tool invocations
-- ✅ Environment configuration loading
-
-### Environment Configuration
-
-All tests load configuration from the `.env` file. Each test (both pytest and direct Python) loads the `.env` file independently, so they can be run separately:
-
-```bash
-# API Configuration
-API_URL=http://localhost:8000
-
-# MCP Server Configuration
-MCP_FORECAST_SERVER_HOST=localhost
-MCP_FORECAST_SERVER_PORT=7778
-MCP_FORECAST_SERVER_URL=http://localhost:7778/mcp
-```
-
-### Running All Tests
-
-**Complete Test Suite**:
-```bash
-# 1. Start services
-docker-compose up -d
-
-# 2. Run unit tests
-poetry run pytest tests/ -v
-
-# 3. Run all integration tests (API + MCP)
-python integration_tests/run_integration_tests.py
-
-# 4. Clean up
-docker-compose down
-```
-
-**Alternative - Run Test Types Separately**:
-```bash
-# 1. Start services
-docker-compose up -d
-
-# 2. Run unit tests
-poetry run pytest tests/ -v
-
-# 3. Run API integration tests
-poetry run pytest integration_tests/ -v
-
-# 4. Run MCP integration tests
-python integration_tests/run_integration_tests.py --mcp-only
-
-# 5. Clean up
-docker-compose down
-```
-
-### Test Results Summary
-
-**Unit Tests** (`tests/`):
-- ✅ Basic workflow execution
-- ✅ Query count functionality  
-- ✅ Workflow ID handling
-- ✅ Activity execution
-
-**API Integration Tests** (`integration_tests/` - pytest):
-- ✅ 8 API endpoint tests
-- ✅ 7 workflow integration tests
-- ✅ Error handling and validation
-- ✅ Concurrent execution testing
-
-**MCP Integration Tests** (`integration_tests/` - direct Python):
-- ✅ Stdio client testing
-- ✅ HTTP client testing
-- ✅ Environment-driven configuration
-- ✅ Connection management
-
-### Troubleshooting Tests
-
-**API Tests Skipped**:
-- Ensure services are running: `docker-compose up`
-- Check API health: `curl http://localhost:8000/health`
-- Verify Temporal UI: http://localhost:8080
-
-**MCP Tests Failing**:
-- For HTTP tests: Ensure MCP server is running on port 7778
-- Check `.env` file configuration
-- Run tests individually for better error messages
-
-All tests are passing! The project successfully demonstrates:
-- Temporal workflow patterns with proper state management
-- Activity execution with retry policies
-- Query handlers for workflow introspection
-- Integration with external tools and MCP servers
-- Full API integration testing
 
 ## API Endpoints
 
 - `POST /chat` - Start a workflow with a message
-- `GET /workflow/{workflow_id}/status` - Get workflow status
+- `GET /workflow/{workflow_id}/status` - Get workflow status  
 - `GET /workflow/{workflow_id}/query` - Query workflow state
 - `GET /health` - Health check
 - `GET /docs` - API documentation
-
-## Activities
-
-The project includes several Temporal activities that demonstrate MCP (Model Context Protocol) integration patterns:
-
-### Available Activities
-
-1. **weather_forecast_activity.py** 
-   - Calls forecast MCP server for weather predictions
-   - Returns formatted weather data for New York (3 days)
-   - Located at: `activities/weather_forecast_activity.py:12`
-
-2. **weather_historical_activity.py**
-   - Calls historical MCP server for past weather data
-   - Returns historical weather for Brisbane (yesterday's date)
-   - Located at: `activities/weather_historical_activity.py:11`
-
-3. **agricultural_activity.py**
-   - Calls agricultural MCP server for farming conditions  
-   - Returns soil moisture, evapotranspiration, and growing conditions
-   - Located at: `activities/agricultural_activity.py:10`
-
-4. **find_events_activity.py**
-   - Legacy activity with hardcoded tool execution
-   - Returns event information for Melbourne
-   - Located at: `activities/find_events_activity.py:12`
-
-### MCP Utilities
-
-The `activities/mcp_utils.py` module provides common utilities for all MCP activities:
-
-- **`get_user_display_name()`** - Extract display names for personalization
-- **`get_mcp_server_config()`** - Environment-based MCP server configuration
-- **`call_mcp_tool()`** - Generic MCP tool calling with error handling and logging
-- **`parse_mcp_result()`** - Parse MCP responses consistently across activities
-- **`create_error_response()`** - Generate standardized error responses
-
-### Activity Pattern
-
-All MCP activities follow a consistent pattern:
-```python
-@activity.defn
-async def activity_name(user_message: str, user_name: str = "anonymous") -> Dict[str, Any]:
-    try:
-        result = await call_mcp_tool(
-            service_name="service",
-            tool_name="tool_name", 
-            tool_args={"arg": "value"},
-            user_name=user_name
-        )
-        return {"message": "friendly response", "data": result}
-    except Exception as e:
-        return create_error_response(user_name, str(e))
-```
 
 ## Project Structure
 
@@ -397,182 +217,13 @@ durable-ai-agent/
 └── tests/             # Test suites
 ```
 
-## Key Simplifications
+### Integration Tests
 
-- No AI/LLM integration (focuses on Temporal workflow patterns)
-- Multiple MCP activities with standardized patterns
-- Fixed parameters for demo purposes (various cities and conditions)
-- Minimal state management (query count tracking)
-- No complex routing or planning (simple activity execution)
-- Unified MCP proxy for simplified service access
+The main integration test is a plain Python program:
 
-## Temporal Best Practices
-
-### Key Points from Temporal Documentation
-
-- **Activity IDs** are only unique within a workflow run, not globally
-- **Task Tokens** provide unique identification for activity executions
-- **Workflow IDs** are unique within a namespace and commonly include business identifiers
-- **User Context**: Always pass user-specific data explicitly as parameters rather than relying on implicit context
-- **Activity Context**: Activities have access to workflow ID, activity ID, task queue, and attempt number through `activity.info()`
-
-## Next Steps
-
-See `durable-ai-agent.md` for the complete implementation plan and architecture guide.
-
-## Integration Tests Details
-
-The project includes comprehensive integration tests with a two-tier approach:
-
-1. **API Integration Tests** (pytest-based) - Test API endpoints with HTTP requests
-2. **MCP Integration Tests** (direct Python programs) - Test MCP client functionality
-
-### Integration Test Structure
-
-```
-integration_tests/
-├── README.md              # Integration test documentation
-├── conftest.py            # Pytest configuration and fixtures
-├── utils/                 # Test utilities
-│   ├── api_client.py      # HTTP client wrapper for API calls
-│   └── test_helpers.py    # Assertion helpers and utilities
-├── test_api_endpoints.py  # Tests for API endpoints (pytest)
-├── test_workflow_integration.py  # Tests for workflow functionality (pytest)
-├── test_stdio_client.py  # MCP stdio client test (direct Python)
-├── test_http_client.py   # MCP HTTP client test (direct Python)
-└── run_integration_tests.py  # MCP test runner (direct Python)
-```
-
-### API Test Utilities (pytest-based)
-
-**DurableAgentAPIClient** (`utils/api_client.py`):
-- Async HTTP client using `httpx`
-- Methods for all API endpoints: `chat()`, `get_workflow_status()`, `query_workflow()`
-- Helper methods like `wait_for_workflow_completion()`
-- Configurable timeout and base URL
-
-**WorkflowAssertions** (`utils/test_helpers.py`):
-- `assert_workflow_started()` - Verifies workflow creation
-- `assert_workflow_completed()` - Checks completion status
-- `assert_events_found()` - Validates event finder results
-- `get_workflow_id()`, `get_event_count()`, `get_query_count()` - Extract data from responses
-
-### Test Coverage
-
-**API Endpoint Tests** (pytest):
-- ✅ Health check endpoint (`/health`)
-- ✅ Root endpoint (`/`)
-- ✅ Chat endpoint (`/chat`) - workflow creation
-- ✅ Workflow status (`/workflow/{id}/status`)
-- ✅ Workflow query (`/workflow/{id}/query`)
-- ✅ Error handling (404, 422 responses)
-
-**Workflow Integration Tests** (pytest):
-- ✅ Activity execution verification
-- ✅ Query count state persistence
-- ✅ Multiple workflow isolation
-- ✅ Custom workflow ID support
-- ✅ Concurrent workflow execution
-- ✅ Response format validation
-
-**MCP Integration Tests** (direct Python):
-- ✅ Stdio client connection and tool invocation
-- ✅ HTTP client connection and tool invocation
-- ✅ Connection reuse and cleanup
-- ✅ Multiple tool invocations
-- ✅ Environment configuration loading
-
-### Running Integration Tests
-
-**API Tests** (pytest-based):
 ```bash
-# Prerequisites: Start all services
-docker-compose up
-
-# Run all API integration tests
-poetry run pytest integration_tests/ -v
-
-# Run only API tests
-poetry run pytest integration_tests/test_api_endpoints.py -v
-
-# Run only workflow tests
-poetry run pytest integration_tests/test_workflow_integration.py -v
-
-# Run by marker
-poetry run pytest integration_tests/ -m api -v
-poetry run pytest integration_tests/ -m workflow -v
-
-# Run with custom API URL
-API_URL=http://localhost:8001 poetry run pytest integration_tests/ -v
+poetry run python integration_tests/test_weather_api.py
 ```
-
-**MCP Tests** (direct Python programs):
-```bash
-# Run all MCP integration tests
-python integration_tests/run_integration_tests.py
-
-# Run without HTTP tests (stdio only)
-python integration_tests/run_integration_tests.py --no-http
-
-# Run individual tests
-python integration_tests/test_stdio_client.py
-python integration_tests/test_http_client.py
-```
-
-### Key Features
-
-**API Tests**:
-- **Async Testing**: All tests use `pytest-asyncio` for async/await support
-- **Fixtures**: Session-scoped API client, fresh workflow IDs, test configuration
-- **Markers**: Tests are marked with `@pytest.mark.api` or `@pytest.mark.workflow`
-- **Real HTTP Calls**: Tests make actual HTTP requests to the running API server
-- **Comprehensive Assertions**: Helper functions for common workflow validations
-- **Error Handling**: Tests verify both success and error scenarios
-
-**MCP Tests**:
-- **Direct Python Programs**: Avoid pytest complexity with async event loops
-- **Environment Configuration**: Each test loads `.env` file independently
-- **Connection Management**: Proper cleanup and reuse testing
-- **Simpler Debugging**: Direct execution with clear error messages
-
-### Writing New Integration Tests
-
-**API Test Example** (pytest):
-```python
-@pytest.mark.api
-@pytest.mark.asyncio
-async def test_my_feature(api_client):
-    response = await api_client.chat("Test message")
-    WorkflowAssertions.assert_workflow_completed(response)
-```
-
-**MCP Test Example** (direct Python):
-```python
-#!/usr/bin/env python3
-"""Simple MCP test.
-
-This is a direct Python program (not pytest) to avoid complexity and issues
-with async test runners and connection pooling.
-"""
-import asyncio
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-
-# Load .env file
-project_root = Path(__file__).parent.parent
-load_dotenv(project_root / ".env")
-
-async def test_my_mcp_feature():
-    # Your test code here
-    pass
-
-if __name__ == "__main__":
-    exit_code = asyncio.run(test_my_mcp_feature())
-    sys.exit(exit_code)
-```
-
-The integration tests ensure the entire system works correctly end-to-end, complementing the unit tests that test individual components in isolation.
 
 ## Proxy Testing
 
@@ -595,33 +246,6 @@ python -m mcp_proxy.simple_proxy
 ```bash
 # Run the simple test script
 python mcp_proxy/test_simple_proxy.py
-```
-
-This will:
-- Connect to the proxy at http://localhost:8000/mcp
-- List all available tools (8 tools from 3 services)
-- Test calling tools from each service
-- Display the results
-
-**Expected output**:
-```
-Connecting to proxy at http://localhost:8000/mcp...
-✅ Connected to proxy!
-
-Found 8 tools:
-  - forecast_get_forecast: Get weather forecast
-  - forecast_get_hourly_forecast: Get hourly weather forecast
-  - current_get_current_weather: Get current weather
-  - current_get_temperature: Get current temperature
-  - current_get_conditions: Get current conditions
-  - historical_get_historical_weather: Get historical weather
-  - historical_get_climate_average: Get climate average
-  - historical_get_weather_records: Get weather records
-
-Testing tool calls...
-Current weather result: {...}
-Forecast result: {...}
-Historical result: {...}
 ```
 
 ### Docker Compose Profiles
@@ -669,68 +293,4 @@ The scripts handle:
 - `test_docker.sh` - Tests the proxy with MCP client calls
 - `stop_docker.sh` - Stops and removes containers with docker-compose
 
-### Integration Testing
 
-**Proxy Integration Test**:
-```bash
-# Start the weather proxy
-./mcp_proxy/run_docker.sh
-
-# Run integration tests against the proxy
-python integration_tests/test_proxy_integration.py
-```
-
-This test verifies:
-- ✅ Proxy connection and unified tool listing (8 tools from 3 services)
-- ✅ Current weather, forecast, and historical tool calls
-- ✅ Connection reuse and multiple sequential operations
-- ✅ All services accessible through single endpoint
-
-### Manual Testing with curl
-
-**List all tools**:
-```bash
-curl -X POST http://localhost:8001/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-```
-
-**Call a specific tool**:
-```bash
-curl -X POST http://localhost:8001/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "forecast_get_forecast",
-      "arguments": {"location": "Sydney", "days": 3}
-    },
-    "id": 2
-  }'
-```
-
-### Using with MCP Client
-
-```python
-from fastmcp.client import Client
-
-async with Client("http://localhost:8001/mcp") as client:
-    # List tools
-    tools = await client.list_tools()
-    
-    # Call a tool
-    result = await client.call_tool(
-        "current_get_current_weather",
-        {"location": "Melbourne"}
-    )
-```
-
-### Proxy Architecture
-
-The proxy uses FastMCP's built-in features:
-- `FastMCP.mount()` to combine multiple services
-- `proxy.run(transport="streamable-http")` for HTTP transport
-- Automatic session management and protocol handling
-
-This simple approach reduces complexity from hundreds of lines to about 20 lines of code while providing full MCP protocol support.
