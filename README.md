@@ -11,15 +11,22 @@ The power comes from bringing together three cutting-edge technologies:
 
 The result is an AI system that not only thinks and reasons like modern LLMs but also executes reliably like production software—bridging the gap between experimental AI and enterprise-ready applications. This is what makes it possible to deploy AI agents that can be trusted with real-world tasks, from analyzing agricultural conditions to orchestrating complex multi-step workflows.
 
-> **Note**: For detailed architecture information and how this project represents a significant evolution over traditional AI applications, see [DURABLE_AI_OVERVIEW.md](DURABLE_AI_OVERVIEW.md).
-
-**Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy System Prompt](https://github.com/retroryan/dspy-system-prompt)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
+**Custom Built Agentic AI Loop with DSPy**: The system implements a fully custom agentic workflow modeled after DSPy ReAct patterns (see [DSPy Overview](DSPy Overview.md)). When triggered, it executes the Reason-Act pattern where the agent iteratively reasons about problems, selects appropriate tools, executes actions, and observes results in a continuous loop until tasks are complete. The system collects all action results throughout the trajectory and uses a separate extract agent to synthesize a final answer from the accumulated observations.
 
 **Multi-Step Reasoning**: Each iteration includes structured thought-action-observation cycles. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
 
 **Tool Integration**: The system includes precision agriculture tool sets that currently call the Open Meteo API directly. MCP (Model Context Protocol) servers are already built and will be set up shortly for enhanced tool integration.
 
 **Temporal Foundation**: Provides durable execution with automatic retry, state persistence, and fault tolerance. Workflows can be long-running conversations that survive system restarts.
+
+> **Note**: For detailed architecture information and how this project represents a significant evolution over traditional AI applications, see [DURABLE_AI_OVERVIEW.md](DURABLE_AI_OVERVIEW.md).
+
+## Sample Output
+
+- [Agentic Loop Sample Run](Agentic Loop Sample Run.md) - Example of the full agentic reasoning process
+- [Agriculture Query Samples](Agriculture Query Samples.md) - Sample agricultural weather queries and responses
+- [MCP Proxy Server Routing](MCP Proxy Server Routing.md) - How the proxy routes between weather services
+- [View Client Screenshot](sample_client_screen_shoot.png) - Visual interface demonstration
 
 ## Quick Start
 
@@ -69,15 +76,13 @@ Docker Compose will start the following services:
 
 ### Using the Chat Interface
 
-1. Open http://localhost:3000 in your browser
+1. Open http://localhost:3000 in your browser - it generates a random user name for now.
 2. Type a message in the input field
-3. The system supports several types of messages (currently hard-coded in workflows/simple_agent_workflow.py):
-   - **"weather"** - Triggers the full agentic workflow with a custom agentic loop modeled off DSPy React. This agent can reason through complex weather-related queries, select appropriate tools, and execute multi-step analysis.
+3. The system supports several types of messages of magic string messages (currently hard-coded in workflows/simple_agent_workflow.py):
+   - **"weather:"** - For example try "weather: Are conditions good for planting corn in Ames, Iowa?".  Triggers the full agentic workflow with a fully custom agentic loop modeled off DSPy React. This includes multi-step reasoning, tool selection, action execution, and result synthesis. Currently it is hard-coded to use the tool set from the worker.env configuration. In the future, the first call could be a classification agent which decides which tool set(s) to use.
    - **"historical"** - Calls the weather historical activity for past weather data
    - **"agriculture"** - Calls the agricultural activity for farming conditions
-   - **Any other message** - Defaults to the find_events activity (legacy behavior)
-
-**Magic Word**: The word "weather" triggers the full agentic workflow with a fully custom agentic loop modeled off DSPy React. This includes multi-step reasoning, tool selection, action execution, and result synthesis. Currently it is hard-coded to use the tool set from the worker.env configuration. In the future, the first call could be a classification agent which decides which tool set(s) to use.
+   - **Any other message** - Defaults to the find_events activity
 
 4. The workflow ID and status are displayed in the header
 5. Click "New Conversation" to start a fresh workflow
@@ -126,6 +131,27 @@ flowchart TD
    - **Observe**: The final answer to the users query.
 3. Loop continues until query is fully answered
 4. Extract Agent synthesizes final response from complete trajectory
+
+### MCP (Model Context Protocol) Integration
+
+The MCP client management and servers are complete with full integration testing. The system includes:
+
+- **MCP Servers**: Three specialized weather services (forecast, current, historical)
+- **Unified Proxy**: Single endpoint combining all services via FastMCP
+- **Client Utilities**: Robust error handling and standardized response parsing
+- **Integration Tests**: Comprehensive testing for both individual services and proxy
+
+**Note**: The only remaining piece is to create tools that call the MCP servers from within the agentic workflow. The infrastructure is fully operational and tested.
+
+### Proxy Architecture
+
+The proxy uses FastMCP's built-in features for elegant service composition:
+- `FastMCP.mount()` to combine multiple services into a unified interface
+- `proxy.run(transport="streamable-http")` for HTTP transport protocol
+- Automatic session management and protocol handling
+- Full MCP protocol support with minimal code overhead
+
+This simple approach reduces complexity while providing complete functionality - the entire proxy implementation is about 20 lines of code compared to hundreds in traditional approaches.
 
 ## Development Setup
 
@@ -222,33 +248,6 @@ python -m mcp_proxy.simple_proxy
 python mcp_proxy/test_simple_proxy.py
 ```
 
-This will:
-- Connect to the proxy at http://localhost:8000/mcp
-- List all available tools (8 tools from 3 services)
-- Test calling tools from each service
-- Display the results
-
-**Expected output**:
-```
-Connecting to proxy at http://localhost:8000/mcp...
-✅ Connected to proxy!
-
-Found 8 tools:
-  - forecast_get_forecast: Get weather forecast
-  - forecast_get_hourly_forecast: Get hourly weather forecast
-  - current_get_current_weather: Get current weather
-  - current_get_temperature: Get current temperature
-  - current_get_conditions: Get current conditions
-  - historical_get_historical_weather: Get historical weather
-  - historical_get_climate_average: Get climate average
-  - historical_get_weather_records: Get weather records
-
-Testing tool calls...
-Current weather result: {...}
-Forecast result: {...}
-Historical result: {...}
-```
-
 ### Docker Compose Profiles
 
 The project uses Docker Compose profiles to manage different service configurations:
@@ -294,68 +293,4 @@ The scripts handle:
 - `test_docker.sh` - Tests the proxy with MCP client calls
 - `stop_docker.sh` - Stops and removes containers with docker-compose
 
-### Integration Testing
 
-**Proxy Integration Test**:
-```bash
-# Start the weather proxy
-./mcp_proxy/run_docker.sh
-
-# Run integration tests against the proxy
-python integration_tests/test_proxy_integration.py
-```
-
-This test verifies:
-- ✅ Proxy connection and unified tool listing (8 tools from 3 services)
-- ✅ Current weather, forecast, and historical tool calls
-- ✅ Connection reuse and multiple sequential operations
-- ✅ All services accessible through single endpoint
-
-### Manual Testing with curl
-
-**List all tools**:
-```bash
-curl -X POST http://localhost:8001/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-```
-
-**Call a specific tool**:
-```bash
-curl -X POST http://localhost:8001/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "forecast_get_forecast",
-      "arguments": {"location": "Sydney", "days": 3}
-    },
-    "id": 2
-  }'
-```
-
-### Using with MCP Client
-
-```python
-from fastmcp.client import Client
-
-async with Client("http://localhost:8001/mcp") as client:
-    # List tools
-    tools = await client.list_tools()
-    
-    # Call a tool
-    result = await client.call_tool(
-        "current_get_current_weather",
-        {"location": "Melbourne"}
-    )
-```
-
-### Proxy Architecture
-
-The proxy uses FastMCP's built-in features:
-- `FastMCP.mount()` to combine multiple services
-- `proxy.run(transport="streamable-http")` for HTTP transport
-- Automatic session management and protocol handling
-
-This simple approach reduces complexity from hundreds of lines to about 20 lines of code while providing full MCP protocol support.

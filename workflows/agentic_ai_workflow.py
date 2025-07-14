@@ -6,11 +6,13 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 from models.types import (
+    ActivityStatus,
     ExtractAgentActivityResult,
     ReactAgentActivityResult,
     Response,
     ToolExecutionRequest,
     ToolExecutionResult,
+    WorkflowStatus,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -30,6 +32,11 @@ class AgenticAIWorkflow:
     def __init__(self):
         """Initialize workflow state."""
         self.query_count = 0
+        self.trajectory = {}
+        self.tools_used = []
+        self.current_iteration = 0
+        self.execution_time = 0.0
+        self.workflow_status = WorkflowStatus.INITIALIZED
 
     @workflow.run
     async def run(self, user_message: str, user_name: str = "anonymous") -> Response:
@@ -56,13 +63,20 @@ class AgenticAIWorkflow:
         workflow.logger.info(f"[AgenticAIWorkflow] Query count: {self.query_count}")
 
         # Run the React agent loop
+        self.workflow_status = WorkflowStatus.RUNNING_REACT_LOOP
         trajectory, tools_used, execution_time = await self._run_react_loop(
             user_message=user_message,
             user_name=user_name,
             max_iterations=5
         )
+        
+        # Update instance variables for state persistence
+        self.trajectory = trajectory
+        self.tools_used = tools_used
+        self.execution_time = execution_time
 
         # Extract final answer using ExtractAgentActivity
+        self.workflow_status = WorkflowStatus.EXTRACTING_ANSWER
         final_answer = await self._extract_final_answer(
             trajectory=trajectory,
             user_query=user_message,
@@ -72,13 +86,13 @@ class AgenticAIWorkflow:
         # Create response message
         workflow.logger.debug(f"[AgenticAIWorkflow] ExtractAgent result - Status: {final_answer.status}, Answer: '{final_answer.answer}', Answer type: {type(final_answer.answer)}")
         
-        if final_answer.status == "success" and final_answer.answer is not None and str(final_answer.answer).strip():
+        if final_answer.status == ActivityStatus.SUCCESS and final_answer.answer is not None and str(final_answer.answer).strip():
             # Return the clean, direct answer from ExtractAgent
             response_message = final_answer.answer
             workflow.logger.info(
                 f"[AgenticAIWorkflow] Successfully extracted answer for {user_name}: {final_answer.answer}"
             )
-        elif final_answer.status == "success":
+        elif final_answer.status == ActivityStatus.SUCCESS:
             # If extraction succeeded but no answer, return the latest meaningful tool result from trajectory
             latest_observation = None
             for key in sorted(trajectory.keys(), reverse=True):
@@ -107,6 +121,8 @@ class AgenticAIWorkflow:
             f"[AgenticAIWorkflow] Workflow completed. Tools used: {', '.join(tools_used) if tools_used else 'None'}, "
             f"Execution time: {execution_time:.2f}s"
         )
+        
+        self.workflow_status = WorkflowStatus.COMPLETED
 
         return Response(
             message=response_message,
@@ -154,16 +170,21 @@ class AgenticAIWorkflow:
                 current_iteration=current_iteration
             )
 
-            if agent_result.status != "success":
+            if agent_result.status != ActivityStatus.SUCCESS:
                 workflow.logger.error(
                     f"[AgenticAIWorkflow] ReactAgent failed: {agent_result.error}"
                 )
+                self.workflow_status = WorkflowStatus.FAILED
                 break
 
             # Update trajectory from agent result
             trajectory = agent_result.trajectory
             tool_name = agent_result.tool_name
             tool_args = agent_result.tool_args or {}
+            
+            # Update instance variable for state persistence
+            self.trajectory = trajectory
+            self.current_iteration = current_iteration
 
             workflow.logger.info(
                 f"[AgenticAIWorkflow] Agent decision - Tool: {tool_name}, Args: {tool_args}"
@@ -294,7 +315,7 @@ class AgenticAIWorkflow:
             updated_trajectory = result_dict.get("trajectory", trajectory)
             
             # Convert dict to ToolExecutionResult
-            if result_dict.get("status") == "success":
+            if result_dict.get("status") == ActivityStatus.SUCCESS:
                 # Extract the observation for this iteration
                 idx = current_iteration - 1
                 observation_key = f"observation_{idx}"
@@ -369,7 +390,7 @@ class AgenticAIWorkflow:
                 f"[AgenticAIWorkflow] Error calling ExtractAgent activity: {e}"
             )
             return ExtractAgentActivityResult(
-                status="error",
+                status=ActivityStatus.ERROR,
                 trajectory=trajectory,
                 error=str(e)
             )
@@ -383,3 +404,25 @@ class AgenticAIWorkflow:
     def get_status(self) -> str:
         """Query handler to get workflow status."""
         return f"Workflow has processed {self.query_count} queries"
+    
+    @workflow.query
+    def get_trajectory(self) -> Dict[str, Any]:
+        """Query handler to get the current trajectory."""
+        return self.trajectory
+    
+    @workflow.query
+    def get_tools_used(self) -> List[str]:
+        """Query handler to get the list of tools used."""
+        return self.tools_used
+    
+    @workflow.query
+    def get_workflow_details(self) -> Dict[str, Any]:
+        """Query handler to get comprehensive workflow details."""
+        return {
+            "query_count": self.query_count,
+            "status": self.workflow_status,
+            "current_iteration": self.current_iteration,
+            "tools_used": self.tools_used,
+            "execution_time": self.execution_time,
+            "trajectory_keys": list(self.trajectory.keys()) if self.trajectory else [],
+        }

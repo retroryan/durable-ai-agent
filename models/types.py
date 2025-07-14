@@ -103,3 +103,34 @@ class ExtractAgentActivityResult(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Error message if status is 'error'"
     )
+
+
+class WorkflowStatus:
+    """Workflow status constants for AgenticAIWorkflow."""
+    
+    INITIALIZED = "initialized"
+    RUNNING_REACT_LOOP = "running_react_loop"
+    EXTRACTING_ANSWER = "extracting_answer"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ActivityStatus:
+    """Activity execution status constants."""
+    
+    SUCCESS = "success"
+    ERROR = "error"
+    COMPLETED = "completed"
+
+
+class AgenticAIWorkflowState(BaseModel):
+    """Detailed state of the AgenticAIWorkflow."""
+    
+    workflow_id: str = Field(description="Workflow ID")
+    status: str = Field(description="Current workflow status")
+    query_count: int = Field(default=0, description="Number of queries processed")
+    current_iteration: int = Field(default=0, description="Current iteration in React loop")
+    tools_used: list[str] = Field(default_factory=list, description="List of tools used")
+    execution_time: float = Field(default=0.0, description="Total execution time in seconds")
+    trajectory_keys: list[str] = Field(default_factory=list, description="Keys present in the trajectory")
+    trajectory: Optional[Dict[str, Any]] = Field(default=None, description="Full trajectory if requested")

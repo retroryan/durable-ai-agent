@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 from temporalio import activity
 
-from models.types import ToolExecutionRequest
+from models.types import ActivityStatus, ToolExecutionRequest
 from shared.tool_utils.registry import ToolRegistry
 
 
@@ -50,7 +50,7 @@ class ToolExecutionActivity:
                 f"observation_{current_iteration-1}"
             ] = "Error: Tool registry not initialized."
             return {
-                "status": "error",
+                "status": ActivityStatus.ERROR,
                 "error": "ToolExecutionActivity not properly initialized with tool_registry",
                 "trajectory": trajectory,
             }
@@ -78,6 +78,6 @@ class ToolExecutionActivity:
             ] = f"Error: Unknown tool {tool_name}"
 
         return {
-            "status": "success",
+            "status": ActivityStatus.SUCCESS,
             "trajectory": trajectory,
         }

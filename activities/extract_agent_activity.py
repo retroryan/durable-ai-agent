@@ -4,7 +4,7 @@ from typing import Any, Dict
 import dspy
 from temporalio import activity
 
-from models.types import ExtractAgentActivityResult
+from models.types import ActivityStatus, ExtractAgentActivityResult
 
 
 # Create a signature for answer extraction
@@ -86,7 +86,7 @@ class ExtractAgentActivity:
             )
 
             return ExtractAgentActivityResult(
-                status="success",
+                status=ActivityStatus.SUCCESS,
                 answer=answer,
                 reasoning=reasoning,
                 trajectory=trajectory,
@@ -112,7 +112,7 @@ class ExtractAgentActivity:
             )
 
             return ExtractAgentActivityResult(
-                status="error",
+                status=ActivityStatus.ERROR,
                 trajectory=trajectory,
                 error=str(e),
             )

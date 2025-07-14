@@ -3,7 +3,7 @@ from typing import Any, Dict, Tuple
 
 from temporalio import activity
 
-from models.types import ReactAgentActivityResult
+from models.types import ActivityStatus, ReactAgentActivityResult
 
 
 class ReactAgentActivity:
@@ -75,7 +75,7 @@ class ReactAgentActivity:
             )
 
             return ReactAgentActivityResult(
-                status="success",
+                status=ActivityStatus.SUCCESS,
                 trajectory=trajectory,
                 tool_name=tool_name,
                 tool_args=tool_args,
@@ -101,7 +101,7 @@ class ReactAgentActivity:
             )
 
             return ReactAgentActivityResult(
-                status="error",
+                status=ActivityStatus.ERROR,
                 trajectory={},
                 tool_name="",
                 user_name=display_name,

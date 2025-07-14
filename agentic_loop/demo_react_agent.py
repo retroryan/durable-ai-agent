@@ -28,6 +28,7 @@ from shared import ConsoleFormatter, setup_llm
 from shared.llm_utils import LLMConfig, get_full_history, save_dspy_history
 
 from shared.tool_utils.registry import create_tool_set_registry, TOOL_SET_MAP
+from models.types import ActivityStatus
 
 # Initialize module-level logger
 logger = logging.getLogger(__name__)
@@ -276,7 +277,7 @@ def run_single_test_case(
         logger.info("✓ Answer extracted successfully")
 
         return {
-            "status": "success",
+            "status": ActivityStatus.SUCCESS,
             "trajectory": trajectory,
             "tools_used": tools_used,
             "execution_time": react_time,
@@ -289,7 +290,7 @@ def run_single_test_case(
     except Exception as e:
         logger.error(f"Test case failed: {e}", exc_info=True)
         return {
-            "status": "error",
+            "status": ActivityStatus.ERROR,
             "error": str(e),
             "execution_time": 0,
             "tools_used": [],
@@ -359,7 +360,7 @@ def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
         # Display results
         logger.info(f"\n{console.section_header('📊 Results', char='-', width=60)}")
 
-        if result["status"] == "success":
+        if result["status"] == ActivityStatus.SUCCESS:
             successful_tests += 1
             total_time += result["execution_time"]
 

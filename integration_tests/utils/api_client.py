@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from models.types import ActivityStatus
+
 
 class DurableAgentAPIClient:
     """HTTP client wrapper for interacting with the durable AI agent API."""
@@ -134,7 +136,7 @@ class DurableAgentAPIClient:
         while asyncio.get_event_loop().time() - start_time < timeout:
             status = await self.get_workflow_status(workflow_id)
 
-            if status.get("status") == "completed":
+            if status.get("status") == ActivityStatus.COMPLETED:
                 return status
 
             await asyncio.sleep(poll_interval)
