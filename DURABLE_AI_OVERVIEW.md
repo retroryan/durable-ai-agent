@@ -56,7 +56,7 @@ The custom agentic loop in `agentic_loop/react_agent.py` implements:
 - Complex session management
 
 #### Durable AI Agent (After)
-- Advanced MCP client (`mcp_client_manager_v2.py`) supporting:
+- Advanced MCP client (`mcp_client_manager.py`) supporting:
   - Both stdio and streaming HTTP connections
   - Connection pooling for reuse across tool calls
   - FastMCP integration for simpler, more robust implementation

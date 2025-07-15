@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from temporalio import activity
 
-from shared.mcp_client_manager_v2 import MCPClientManager
+from shared.mcp_client_manager import MCPClientManager
 
 
 @activity.defn

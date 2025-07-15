@@ -24,7 +24,7 @@ else:
     print(f"No .env file found at {env_path}, using defaults")
 
 sys.path.insert(0, str(project_root))
-from shared.mcp_client_manager_v2 import MCPClientManager
+from shared.mcp_client_manager import MCPClientManager
 
 
 async def test_http_client():

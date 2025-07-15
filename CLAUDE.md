@@ -102,6 +102,11 @@ docker-compose --profile forecast up
 # - Temporal UI: http://localhost:8080
 # - Weather Proxy: http://localhost:8001/mcp
 # - Forecast Service: http://localhost:7778/mcp
+
+# Run MCP servers locally with Poetry:
+poetry run poe mcp-forecast      # Forecast server on port 7778
+poetry run poe mcp-historical    # Historical server on port 7779
+poetry run poe mcp-agricultural  # Agricultural server on port 7780
 ```
 
 ## Architecture Overview

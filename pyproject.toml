@@ -13,6 +13,7 @@ packages = [
     { include = "tools" },
     { include = "workflows" },
     { include = "worker" },
+    { include = "mcp_servers" },
 ]
 
 [tool.poetry.urls]
@@ -23,6 +24,48 @@ format = [{cmd = "black ."}, {cmd = "isort ."}]
 lint = [{cmd = "black --check ."}, {cmd = "isort --check-only ."}, {ref = "lint-types" }]
 lint-types = "mypy --check-untyped-defs --namespace-packages ."
 test = "pytest"
+mcp-forecast = "python mcp_servers/forecast_server.py"
+mcp-historical = "python mcp_servers/historical_server.py"
+mcp-agricultural = "python mcp_servers/agricultural_server.py"
+mcp-stop.shell = "pkill -f 'mcp_servers/(forecast|historical|agricultural)_server.py' || echo 'No MCP servers were running'"
+mcp-all.shell = """
+echo 'Starting all MCP servers...'
+echo 'Forecast server on http://localhost:7778/mcp'
+echo 'Historical server on http://localhost:7779/mcp'
+echo 'Agricultural server on http://localhost:7780/mcp'
+echo ''
+echo 'Press Ctrl+C to stop all servers'
+python -c "
+import subprocess
+import signal
+import sys
+import time
+
+processes = []
+
+def signal_handler(sig, frame):
+    print('\\nStopping all servers...')
+    for p in processes:
+        p.terminate()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
+try:
+    # Start all servers
+    processes.append(subprocess.Popen(['python', 'mcp_servers/forecast_server.py']))
+    time.sleep(0.5)
+    processes.append(subprocess.Popen(['python', 'mcp_servers/historical_server.py']))
+    time.sleep(0.5)
+    processes.append(subprocess.Popen(['python', 'mcp_servers/agricultural_server.py']))
+    
+    # Wait for all processes
+    for p in processes:
+        p.wait()
+except KeyboardInterrupt:
+    pass
+"
+"""
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"

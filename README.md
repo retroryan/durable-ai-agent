@@ -134,12 +134,50 @@ flowchart TD
 
 ### MCP (Model Context Protocol) Integration
 
-The MCP client management and servers are complete with full integration testing. The system includes:
+The project includes a complete MCP implementation with three specialized weather services, all managed through Poetry for seamless integration.
 
-- **MCP Servers**: Three specialized weather services (forecast, current, historical)
-- **Unified Proxy**: Single endpoint combining all services via FastMCP
-- **Client Utilities**: Robust error handling and standardized response parsing
-- **Integration Tests**: Comprehensive testing for both individual services and proxy
+#### MCP Servers
+
+Three specialized weather services using FastMCP:
+- **Forecast Server** (port 7778): Weather forecasts up to 7 days
+- **Historical Server** (port 7779): Historical weather data with 5-day delay
+- **Agricultural Server** (port 7780): Agricultural conditions and soil moisture
+
+#### Running MCP Servers
+
+```bash
+# Run all servers at once (recommended for development)
+poetry run poe mcp-all
+# Press Ctrl+C to stop all servers when running mcp-all
+
+# Or run individual servers
+poetry run poe mcp-forecast      # Forecast server on port 7778
+poetry run poe mcp-historical    # Historical server on port 7779
+poetry run poe mcp-agricultural  # Agricultural server on port 7780
+
+# Stop all MCP servers
+poetry run poe mcp-stop
+
+# Servers are also available via Docker Compose
+docker-compose --profile weather_proxy up  # Unified proxy on port 8001
+```
+
+#### Testing MCP Integration
+
+```bash
+# Run all MCP integration tests (direct Python programs)
+poetry run python integration_tests/run_integration_tests.py
+
+# Run individual integration tests
+poetry run python integration_tests/test_stdio_client.py     # Test stdio transport
+poetry run python integration_tests/test_http_client.py      # Test HTTP transport (requires server)
+poetry run python integration_tests/test_proxy_integration.py # Test unified proxy
+
+# Run tests without HTTP (if servers aren't running)
+poetry run python integration_tests/run_integration_tests.py --no-http
+```
+
+The integration tests are implemented as direct Python programs (not pytest) to avoid complexity with async test runners and provide clearer error messages.
 
 **Note**: The only remaining piece is to create tools that call the MCP servers from within the agentic workflow. The infrastructure is fully operational and tested.
 
@@ -205,6 +243,13 @@ durable-ai-agent/
 │   ├── run_docker.sh         # Docker compose startup script
 │   ├── test_docker.sh        # Docker testing script
 │   └── stop_docker.sh        # Docker cleanup script
+├── mcp_servers/       # MCP server implementations
+│   ├── forecast_server.py     # Weather forecast server
+│   ├── historical_server.py   # Historical weather server
+│   ├── agricultural_server.py # Agricultural conditions server
+│   ├── api_utils.py          # Shared API utilities
+│   ├── models.py             # Pydantic models
+│   └── utils/                # Utility modules
 ├── frontend/          # React UI
 │   ├── src/
 │   │   ├── components/   # React components
