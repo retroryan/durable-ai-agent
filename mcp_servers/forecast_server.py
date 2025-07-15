@@ -6,6 +6,7 @@ Returns raw JSON from the Open-Meteo API for LLM interpretation.
 
 import json
 import logging
+import os
 from typing import Optional, Union
 
 from fastmcp import FastMCP
@@ -15,6 +16,11 @@ from starlette.responses import JSONResponse
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Check for mock mode
+MOCK_MODE = os.getenv("TOOLS_MOCK", "false").lower() == "true"
+if MOCK_MODE:
+    logger.info("🔧 Running forecast server in MOCK MODE - no external API calls will be made")
 
 # Import shared utilities
 try:
@@ -50,6 +56,48 @@ async def health_check(request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy", "service": "forecast-server"})
 
 
+def get_mock_forecast(coords: dict, days: int) -> dict:
+    """Return mock forecast data for testing."""
+    from datetime import datetime, timedelta
+    
+    base_date = datetime.now()
+    daily_data = {
+        "time": [],
+        "temperature_2m_max": [],
+        "temperature_2m_min": [],
+        "precipitation_sum": [],
+        "wind_speed_10m_max": [],
+    }
+    
+    for i in range(days):
+        date = base_date + timedelta(days=i)
+        daily_data["time"].append(date.strftime("%Y-%m-%d"))
+        daily_data["temperature_2m_max"].append(20 + i * 0.5)
+        daily_data["temperature_2m_min"].append(10 + i * 0.3)
+        daily_data["precipitation_sum"].append(0 if i % 3 else 2.5)
+        daily_data["wind_speed_10m_max"].append(15 + i * 0.2)
+    
+    return {
+        "location_info": {
+            "name": coords.get("name", f"{coords['latitude']:.4f},{coords['longitude']:.4f}"),
+            "coordinates": {
+                "latitude": coords["latitude"],
+                "longitude": coords["longitude"],
+            },
+        },
+        "current": {
+            "temperature_2m": 18.5,
+            "relative_humidity_2m": 65,
+            "precipitation": 0,
+            "weather_code": 0,
+            "wind_speed_10m": 12.5,
+        },
+        "daily": daily_data,
+        "summary": f"Mock weather forecast for {coords.get('name')} ({days} days)",
+        "mock": True,
+    }
+
+
 @server.tool
 async def get_weather_forecast(request: ForecastRequest) -> dict:
     """Get weather forecast with coordinate optimization.
@@ -74,18 +122,40 @@ async def get_weather_forecast(request: ForecastRequest) -> dict:
                 or f"{request.latitude:.4f},{request.longitude:.4f}",
             }
         elif request.location:
-            coords = await get_coordinates(request.location)
-            if not coords:
-                return {
-                    "error": f"Could not find location: {request.location}. Please try a major city name."
+            # In mock mode, use simple coordinate mapping
+            if MOCK_MODE:
+                # Simple mock coordinates for common locations
+                mock_coords = {
+                    "new york": {"latitude": 40.7128, "longitude": -74.0060, "name": "New York"},
+                    "london": {"latitude": 51.5074, "longitude": -0.1278, "name": "London"},
+                    "san francisco": {"latitude": 37.7749, "longitude": -122.4194, "name": "San Francisco"},
+                    "des moines": {"latitude": 41.5868, "longitude": -93.6250, "name": "Des Moines"},
+                    "ames": {"latitude": 42.0308, "longitude": -93.6319, "name": "Ames"},
+                    "miami": {"latitude": 25.7617, "longitude": -80.1918, "name": "Miami"},
                 }
+                location_key = request.location.lower().replace(",", "").strip()
+                coords = mock_coords.get(location_key, {
+                    "latitude": 40.7128,
+                    "longitude": -74.0060,
+                    "name": request.location
+                })
+            else:
+                coords = await get_coordinates(request.location)
+                if not coords:
+                    return {
+                        "error": f"Could not find location: {request.location}. Please try a major city name."
+                    }
         else:
             # This should not happen due to Pydantic validation
             return {
                 "error": "Either location name or coordinates (latitude, longitude) required"
             }
 
-        # Get forecast data
+        # Return mock data if in mock mode
+        if MOCK_MODE:
+            return get_mock_forecast(coords, request.days)
+
+        # Get real forecast data
         params = {
             "latitude": coords["latitude"],
             "longitude": coords["longitude"],

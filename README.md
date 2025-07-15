@@ -15,7 +15,9 @@ The result is an AI system that not only thinks and reasons like modern LLMs but
 
 **Multi-Step Reasoning**: Each iteration includes structured thought-action-observation cycles. The agent builds a comprehensive trajectory of all steps taken, allowing for complex multi-turn reasoning where each decision builds on previous observations and results.
 
-**Tool Integration**: The system includes precision agriculture tool sets that currently call the Open Meteo API directly. MCP (Model Context Protocol) servers are already built and will be set up shortly for enhanced tool integration.
+**Tool Integration**: The system includes both traditional and MCP-enabled tools. The precision agriculture tool set provides weather forecasting, historical data, and agricultural conditions through:
+- **Traditional Tools**: Direct API calls to Open Meteo
+- **MCP Tools**: Same functionality via Model Context Protocol servers, enabling distributed execution and better scalability
 
 **Temporal Foundation**: Provides durable execution with automatic retry, state persistence, and fault tolerance. Workflows can be long-running conversations that survive system restarts.
 
@@ -179,7 +181,19 @@ poetry run python integration_tests/run_integration_tests.py --no-http
 
 The integration tests are implemented as direct Python programs (not pytest) to avoid complexity with async test runners and provide clearer error messages.
 
-**Note**: The only remaining piece is to create tools that call the MCP servers from within the agentic workflow. The infrastructure is fully operational and tested.
+#### MCP Tool Integration
+
+The system now includes MCP-enabled tools that seamlessly integrate with the agentic workflow:
+
+- **WeatherForecastMCPTool**: Weather forecasts via MCP (`get_weather_forecast_mcp`)
+- **HistoricalWeatherMCPTool**: Historical weather data via MCP (`get_historical_weather_mcp`)
+- **AgriculturalWeatherMCPTool**: Agricultural conditions via MCP (`get_agricultural_conditions_mcp`)
+
+These tools:
+- Coexist with traditional tools in the tool registry
+- Are automatically routed to the MCPExecutionActivity
+- Support mock mode via `TOOLS_MOCK=true` environment variable
+- Provide the same functionality as traditional tools but through MCP servers
 
 ### Proxy Architecture
 

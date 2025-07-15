@@ -71,15 +71,31 @@ class AgricultureToolSet(ToolSet):
         )
         from tools.precision_agriculture.historical_weather import HistoricalWeatherTool
         from tools.precision_agriculture.weather_forecast import WeatherForecastTool
+        
+        # Import MCP-enabled weather tools
+        from tools.precision_agriculture.agricultural_weather_mcp import (
+            AgriculturalWeatherMCPTool,
+        )
+        from tools.precision_agriculture.historical_weather_mcp import (
+            HistoricalWeatherMCPTool,
+        )
+        from tools.precision_agriculture.weather_forecast_mcp import (
+            WeatherForecastMCPTool,
+        )
 
         super().__init__(
             config=ToolSetConfig(
                 name=self.NAME,
-                description="Weather forecasting, agricultural conditions, and historical weather data tools",
+                description="Weather forecasting, agricultural conditions, and historical weather data tools (with MCP support)",
                 tool_classes=[
+                    # Traditional tools
                     AgriculturalWeatherTool,
                     WeatherForecastTool,
                     HistoricalWeatherTool,
+                    # MCP-enabled tools
+                    AgriculturalWeatherMCPTool,
+                    WeatherForecastMCPTool,
+                    HistoricalWeatherMCPTool,
                 ],
             )
         )

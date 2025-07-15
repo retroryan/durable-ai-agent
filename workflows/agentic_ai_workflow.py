@@ -21,6 +21,7 @@ with workflow.unsafe.imports_passed_through():
     import requests
     import urllib3
     from activities.extract_agent_activity import ExtractAgentActivity
+    from activities.mcp_execution_activity import MCPExecutionActivity
     from activities.react_agent_activity import ReactAgentActivity
     from activities.tool_execution_activity import ToolExecutionActivity
 
@@ -276,7 +277,10 @@ class AgenticAIWorkflow:
         current_iteration: int
     ) -> ToolExecutionResult:
         """
-        Execute a tool using the ToolExecutionActivity.
+        Execute a tool using the appropriate execution activity.
+        
+        For MCP tools (tools ending with '_mcp'), routes to MCPExecutionActivity.
+        For other tools, routes to ToolExecutionActivity.
 
         Args:
             tool_name: Name of the tool to execute
@@ -299,17 +303,33 @@ class AgenticAIWorkflow:
         )
 
         try:
-            # ToolExecutionActivity returns a dict, not a ToolExecutionResult object
-            result_dict = await workflow.execute_activity_method(
-                ToolExecutionActivity.execute_tool,
-                args=[tool_request],
-                start_to_close_timeout=timedelta(seconds=30),
-                retry_policy=RetryPolicy(
-                    initial_interval=timedelta(seconds=1),
-                    maximum_interval=timedelta(seconds=10),
-                    maximum_attempts=3,
-                ),
-            )
+            # Check if this is an MCP tool by naming convention
+            # MCP tools should end with '_mcp' suffix
+            if tool_name.endswith('_mcp'):
+                workflow.logger.info(f"[AgenticAIWorkflow] Routing to MCPExecutionActivity for tool: {tool_name}")
+                # Execute via MCP activity
+                result_dict = await workflow.execute_activity_method(
+                    MCPExecutionActivity.execute_mcp_tool,
+                    args=[tool_request],
+                    start_to_close_timeout=timedelta(seconds=300),  # Longer timeout for network calls
+                    retry_policy=RetryPolicy(
+                        initial_interval=timedelta(seconds=1),
+                        maximum_interval=timedelta(seconds=10),
+                        maximum_attempts=3,
+                    ),
+                )
+            else:
+                # Execute via regular tool activity
+                result_dict = await workflow.execute_activity_method(
+                    ToolExecutionActivity.execute_tool,
+                    args=[tool_request],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=RetryPolicy(
+                        initial_interval=timedelta(seconds=1),
+                        maximum_interval=timedelta(seconds=10),
+                        maximum_attempts=3,
+                    ),
+                )
             
             # Get the updated trajectory from the activity
             updated_trajectory = result_dict.get("trajectory", trajectory)

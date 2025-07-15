@@ -62,6 +62,9 @@ class BaseTool(BaseModel, ABC):
     
     # Configuration for mock behavior (default True to maintain current behavior)
     mock_results: bool = Field(default=True, exclude=True)
+    
+    # Optional MCP configuration fields (for compatibility with MCPTool)
+    uses_mcp: bool = Field(default=False, exclude=True)
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -69,6 +72,9 @@ class BaseTool(BaseModel, ABC):
         Also ensures that the NAME is a valid Python identifier.
         """
         super().__init_subclass__(**kwargs)
+        # Skip validation for abstract classes
+        if ABC in cls.__bases__:
+            return
         if not hasattr(cls, "NAME"):
             raise TypeError(f"{cls.__name__} must define a 'NAME' class variable.")
         if not hasattr(cls, "MODULE"):
