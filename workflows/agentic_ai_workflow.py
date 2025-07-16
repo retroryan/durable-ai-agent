@@ -1,6 +1,6 @@
 """Simple workflow that demonstrates Temporal patterns with minimal complexity."""
 from datetime import timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -24,6 +24,7 @@ with workflow.unsafe.imports_passed_through():
     from activities.mcp_execution_activity import MCPExecutionActivity
     from activities.react_agent_activity import ReactAgentActivity
     from activities.tool_execution_activity import ToolExecutionActivity
+    from models.conversation import ConversationState
 
 
 @workflow.defn
@@ -40,13 +41,19 @@ class AgenticAIWorkflow:
         self.workflow_status = WorkflowStatus.INITIALIZED
 
     @workflow.run
-    async def run(self, user_message: str, user_name: str = "anonymous") -> Response:
+    async def run(
+        self, 
+        user_message: str, 
+        user_name: str = "anonymous",
+        conversation_state: Optional[ConversationState] = None
+    ) -> Response:
         """
-        Main workflow execution.
+        Main workflow execution with optional conversation context.
 
         Args:
             user_message: The message from the user
             user_name: The name of the user
+            conversation_state: Optional conversation state for context awareness
 
         Returns:
             Response with event information
@@ -68,6 +75,7 @@ class AgenticAIWorkflow:
         trajectory, tools_used, execution_time = await self._run_react_loop(
             user_message=user_message,
             user_name=user_name,
+            conversation_state=conversation_state,
             max_iterations=5
         )
         
@@ -135,6 +143,7 @@ class AgenticAIWorkflow:
         self,
         user_message: str,
         user_name: str,
+        conversation_state: Optional[ConversationState] = None,
         max_iterations: int = 5
     ) -> Tuple[Dict[str, Any], List[str], float]:
         """
@@ -143,12 +152,26 @@ class AgenticAIWorkflow:
         Args:
             user_message: The user's query
             user_name: The name of the user
+            conversation_state: Optional conversation state for context
             max_iterations: Maximum number of iterations
 
         Returns:
             Tuple of (trajectory dictionary, tools used list, execution time)
         """
         trajectory = {}
+        
+        # Initialize trajectory with conversation context if provided
+        if conversation_state and conversation_state.messages:
+            # Include recent conversation context
+            recent_messages = conversation_state.messages[-10:]  # Last 10 messages
+            trajectory["conversation_context"] = [
+                {"actor": msg.actor, "content": msg.content} 
+                for msg in recent_messages
+            ]
+            workflow.logger.info(
+                f"[AgenticAIWorkflow] Initialized trajectory with {len(recent_messages)} messages from conversation history"
+            )
+        
         tools_used = []
         current_iteration = 1
         start_time = workflow.now()
