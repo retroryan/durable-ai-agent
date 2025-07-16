@@ -1,6 +1,6 @@
 """Simple workflow that demonstrates Temporal patterns with minimal complexity."""
 from datetime import timedelta
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -21,10 +21,8 @@ with workflow.unsafe.imports_passed_through():
     import requests
     import urllib3
     from activities.extract_agent_activity import ExtractAgentActivity
-    from activities.mcp_execution_activity import MCPExecutionActivity
     from activities.react_agent_activity import ReactAgentActivity
     from activities.tool_execution_activity import ToolExecutionActivity
-    from models.conversation import ConversationState
 
 
 @workflow.defn
@@ -41,19 +39,13 @@ class AgenticAIWorkflow:
         self.workflow_status = WorkflowStatus.INITIALIZED
 
     @workflow.run
-    async def run(
-        self, 
-        user_message: str, 
-        user_name: str = "anonymous",
-        conversation_state: Optional[ConversationState] = None
-    ) -> Response:
+    async def run(self, user_message: str, user_name: str = "anonymous") -> Response:
         """
-        Main workflow execution with optional conversation context.
+        Main workflow execution.
 
         Args:
             user_message: The message from the user
             user_name: The name of the user
-            conversation_state: Optional conversation state for context awareness
 
         Returns:
             Response with event information
@@ -75,7 +67,6 @@ class AgenticAIWorkflow:
         trajectory, tools_used, execution_time = await self._run_react_loop(
             user_message=user_message,
             user_name=user_name,
-            conversation_state=conversation_state,
             max_iterations=5
         )
         
@@ -143,7 +134,6 @@ class AgenticAIWorkflow:
         self,
         user_message: str,
         user_name: str,
-        conversation_state: Optional[ConversationState] = None,
         max_iterations: int = 5
     ) -> Tuple[Dict[str, Any], List[str], float]:
         """
@@ -152,26 +142,12 @@ class AgenticAIWorkflow:
         Args:
             user_message: The user's query
             user_name: The name of the user
-            conversation_state: Optional conversation state for context
             max_iterations: Maximum number of iterations
 
         Returns:
             Tuple of (trajectory dictionary, tools used list, execution time)
         """
         trajectory = {}
-        
-        # Initialize trajectory with conversation context if provided
-        if conversation_state and conversation_state.messages:
-            # Include recent conversation context
-            recent_messages = conversation_state.messages[-10:]  # Last 10 messages
-            trajectory["conversation_context"] = [
-                {"actor": msg.actor, "content": msg.content} 
-                for msg in recent_messages
-            ]
-            workflow.logger.info(
-                f"[AgenticAIWorkflow] Initialized trajectory with {len(recent_messages)} messages from conversation history"
-            )
-        
         tools_used = []
         current_iteration = 1
         start_time = workflow.now()
@@ -300,10 +276,7 @@ class AgenticAIWorkflow:
         current_iteration: int
     ) -> ToolExecutionResult:
         """
-        Execute a tool using the appropriate execution activity.
-        
-        For MCP tools (tools ending with '_mcp'), routes to MCPExecutionActivity.
-        For other tools, routes to ToolExecutionActivity.
+        Execute a tool using the ToolExecutionActivity.
 
         Args:
             tool_name: Name of the tool to execute
@@ -326,33 +299,17 @@ class AgenticAIWorkflow:
         )
 
         try:
-            # Check if this is an MCP tool by naming convention
-            # MCP tools should end with '_mcp' suffix
-            if tool_name.endswith('_mcp'):
-                workflow.logger.info(f"[AgenticAIWorkflow] Routing to MCPExecutionActivity for tool: {tool_name}")
-                # Execute via MCP activity
-                result_dict = await workflow.execute_activity_method(
-                    MCPExecutionActivity.execute_mcp_tool,
-                    args=[tool_request],
-                    start_to_close_timeout=timedelta(seconds=300),  # Longer timeout for network calls
-                    retry_policy=RetryPolicy(
-                        initial_interval=timedelta(seconds=1),
-                        maximum_interval=timedelta(seconds=10),
-                        maximum_attempts=3,
-                    ),
-                )
-            else:
-                # Execute via regular tool activity
-                result_dict = await workflow.execute_activity_method(
-                    ToolExecutionActivity.execute_tool,
-                    args=[tool_request],
-                    start_to_close_timeout=timedelta(seconds=30),
-                    retry_policy=RetryPolicy(
-                        initial_interval=timedelta(seconds=1),
-                        maximum_interval=timedelta(seconds=10),
-                        maximum_attempts=3,
-                    ),
-                )
+            # ToolExecutionActivity returns a dict, not a ToolExecutionResult object
+            result_dict = await workflow.execute_activity_method(
+                ToolExecutionActivity.execute_tool,
+                args=[tool_request],
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=RetryPolicy(
+                    initial_interval=timedelta(seconds=1),
+                    maximum_interval=timedelta(seconds=10),
+                    maximum_attempts=3,
+                ),
+            )
             
             # Get the updated trajectory from the activity
             updated_trajectory = result_dict.get("trajectory", trajectory)

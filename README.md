@@ -222,7 +222,7 @@ poetry install
 temporal server start-dev
 
 # Start worker, API, and frontend in separate terminals
-poetry run python worker/main.py
+poetry run python scripts/run_worker.py
 poetry run python api/main.py
 cd frontend && npm install && npm run dev
 ```

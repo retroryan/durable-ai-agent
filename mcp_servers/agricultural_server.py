@@ -149,7 +149,7 @@ async def get_agricultural_conditions(request: AgriculturalRequest) -> dict:
 
         # Return mock data if in mock mode
         if MOCK_MODE:
-            return get_mock_agricultural(coords, request.days, request.crop_type)
+            return get_mock_agricultural(coords, request.days, None)
 
         # Get real agricultural data with soil and ET parameters
         params = {

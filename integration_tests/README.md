@@ -55,7 +55,7 @@ The API integration tests use pytest and test the API server with actual HTTP re
    temporal server start-dev
    
    # Terminal 2: Start the worker
-   poetry run python worker/main.py
+   poetry run python scripts/run_worker.py
    
    # Terminal 3: Start the API
    poetry run python -m api.main
