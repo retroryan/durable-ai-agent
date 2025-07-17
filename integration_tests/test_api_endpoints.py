@@ -12,11 +12,11 @@ from datetime import datetime
 from utils.api_client import DurableAgentAPIClient
 
 
-async def test_health_endpoint(client: DurableAgentAPIClient):
+async def test_health_endpoint(api_client: DurableAgentAPIClient):
     """Test the health check endpoint."""
     print("\n🏥 Testing health endpoint...")
     try:
-        response = await client.health_check()
+        response = await api_client.health_check()
         assert response["status"] == "healthy", f"Expected status 'healthy', got {response['status']}"
         assert response["temporal_connected"] is True, "Temporal should be connected"
         print("✅ Health endpoint passed")
@@ -26,11 +26,11 @@ async def test_health_endpoint(client: DurableAgentAPIClient):
         return False
 
 
-async def test_root_endpoint(client: DurableAgentAPIClient):
+async def test_root_endpoint(api_client: DurableAgentAPIClient):
     """Test the root endpoint."""
     print("\n🏠 Testing root endpoint...")
     try:
-        response = await client.client.get(f"{client.base_url}/")
+        response = await api_client.client.get(f"{api_client.base_url}/")
         response.raise_for_status()
         data = response.json()
         
@@ -44,11 +44,11 @@ async def test_root_endpoint(client: DurableAgentAPIClient):
         return False
 
 
-async def test_chat_endpoint_creates_workflow(client: DurableAgentAPIClient):
+async def test_chat_endpoint_creates_workflow(api_client: DurableAgentAPIClient):
     """Test that the chat endpoint creates a new workflow."""
     print("\n💬 Testing chat endpoint (workflow creation)...")
     try:
-        response = await client.chat("Hello, find some events")
+        response = await api_client.chat("Hello, find some events")
         
         # Verify workflow was created
         assert "workflow_id" in response, "Response should contain workflow_id"
@@ -62,12 +62,12 @@ async def test_chat_endpoint_creates_workflow(client: DurableAgentAPIClient):
         return False
 
 
-async def test_chat_with_specific_workflow_id(client: DurableAgentAPIClient):
+async def test_chat_with_specific_workflow_id(api_client: DurableAgentAPIClient):
     """Test chat with a specific workflow ID."""
     print("\n🔖 Testing chat with specific workflow ID...")
     try:
         workflow_id = f"test-workflow-{uuid.uuid4()}"
-        response = await client.chat("Find events in Melbourne", workflow_id=workflow_id)
+        response = await api_client.chat("Find events in Melbourne", workflow_id=workflow_id)
         
         # Verify the workflow ID matches
         assert response["workflow_id"] == workflow_id, f"Expected workflow_id {workflow_id}, got {response['workflow_id']}"
@@ -80,16 +80,16 @@ async def test_chat_with_specific_workflow_id(client: DurableAgentAPIClient):
         return False
 
 
-async def test_workflow_status_endpoint(client: DurableAgentAPIClient):
+async def test_workflow_status_endpoint(api_client: DurableAgentAPIClient):
     """Test the workflow status endpoint."""
     print("\n📊 Testing workflow status endpoint...")
     try:
         # First create a workflow
-        chat_response = await client.chat("Test message")
+        chat_response = await api_client.chat("Test message")
         workflow_id = chat_response["workflow_id"]
         
         # Get status
-        status_response = await client.get_workflow_status(workflow_id)
+        status_response = await api_client.get_workflow_status(workflow_id)
         
         assert status_response["workflow_id"] == workflow_id, "Workflow ID mismatch"
         assert status_response["status"] == "completed", f"Expected status 'completed', got {status_response['status']}"
@@ -102,16 +102,16 @@ async def test_workflow_status_endpoint(client: DurableAgentAPIClient):
         return False
 
 
-async def test_workflow_query_endpoint(client: DurableAgentAPIClient):
+async def test_workflow_query_endpoint(api_client: DurableAgentAPIClient):
     """Test the workflow query endpoint."""
     print("\n🔍 Testing workflow query endpoint...")
     try:
         # First create a workflow
-        chat_response = await client.chat("Test query")
+        chat_response = await api_client.chat("Test query")
         workflow_id = chat_response["workflow_id"]
         
         # Query the workflow
-        query_response = await client.query_workflow(workflow_id)
+        query_response = await api_client.query_workflow(workflow_id)
         
         assert query_response["workflow_id"] == workflow_id, "Workflow ID mismatch"
         assert query_response["query_count"] == 1, f"Expected query_count 1, got {query_response['query_count']}"
@@ -124,11 +124,11 @@ async def test_workflow_query_endpoint(client: DurableAgentAPIClient):
         return False
 
 
-async def test_nonexistent_workflow_status(client: DurableAgentAPIClient):
+async def test_nonexistent_workflow_status(api_client: DurableAgentAPIClient):
     """Test getting status of non-existent workflow."""
     print("\n🚫 Testing non-existent workflow status...")
     try:
-        await client.get_workflow_status("non-existent-workflow-id")
+        await api_client.get_workflow_status("non-existent-workflow-id")
         print("❌ Should have failed with 404 but didn't")
         return False
     except Exception as e:
@@ -140,13 +140,13 @@ async def test_nonexistent_workflow_status(client: DurableAgentAPIClient):
             return False
 
 
-async def test_api_error_handling(client: DurableAgentAPIClient):
+async def test_api_error_handling(api_client: DurableAgentAPIClient):
     """Test API error handling with invalid data."""
     print("\n⚠️ Testing API error handling...")
     try:
         # Try to send invalid data
-        response = await client.client.post(
-            f"{client.base_url}/chat",
+        response = await api_client.client.post(
+            f"{api_client.base_url}/chat",
             json={},  # Missing required 'message' field
         )
         
@@ -162,12 +162,12 @@ async def test_api_error_handling(client: DurableAgentAPIClient):
         return False
 
 
-async def test_chat_with_user_name(client: DurableAgentAPIClient):
+async def test_chat_with_user_name(api_client: DurableAgentAPIClient):
     """Test chat endpoint with user_name parameter."""
     print("\n👤 Testing chat with user_name...")
     try:
         user_name = "test_user_123"
-        response = await client.chat("Hello with username", user_name=user_name)
+        response = await api_client.chat("Hello with username", user_name=user_name)
         
         # Verify workflow was created successfully
         assert "workflow_id" in response, "Response should contain workflow_id"
@@ -182,11 +182,11 @@ async def test_chat_with_user_name(client: DurableAgentAPIClient):
 
 # New tests for different workflow routing paths
 
-async def test_weather_prefix_query(client: DurableAgentAPIClient):
+async def test_weather_prefix_query(api_client: DurableAgentAPIClient):
     """Test weather: prefix routing to weather query handler."""
     print("\n🌤️ Testing weather: prefix query routing...")
     try:
-        response = await client.chat("weather: What's the weather forecast for New York City?")
+        response = await api_client.chat("weather: What's the weather forecast for New York City?")
         
         # Verify workflow was created and response contains weather info
         assert "workflow_id" in response, "Response should contain workflow_id"
@@ -209,11 +209,11 @@ async def test_weather_prefix_query(client: DurableAgentAPIClient):
         return False
 
 
-async def test_historical_query(client: DurableAgentAPIClient):
+async def test_historical_query(api_client: DurableAgentAPIClient):
     """Test historical keyword routing to historical query handler."""
     print("\n📊 Testing historical query routing...")
     try:
-        response = await client.chat("Show me historical weather data for Chicago last month")
+        response = await api_client.chat("Show me historical weather data for Chicago last month")
         
         # Verify workflow was created
         assert "workflow_id" in response, "Response should contain workflow_id"
@@ -239,11 +239,11 @@ async def test_historical_query(client: DurableAgentAPIClient):
         return False
 
 
-async def test_agriculture_query(client: DurableAgentAPIClient):
+async def test_agriculture_query(api_client: DurableAgentAPIClient):
     """Test agriculture keyword routing to agricultural query handler."""
     print("\n🌱 Testing agriculture query routing...")
     try:
-        response = await client.chat("What are the agriculture conditions for corn planting in Iowa?")
+        response = await api_client.chat("What are the agriculture conditions for corn planting in Iowa?")
         
         # Verify workflow was created
         assert "workflow_id" in response, "Response should contain workflow_id"
@@ -269,11 +269,11 @@ async def test_agriculture_query(client: DurableAgentAPIClient):
         return False
 
 
-async def test_default_query(client: DurableAgentAPIClient):
+async def test_default_query(api_client: DurableAgentAPIClient):
     """Test default routing (no special keywords) to default query handler."""
     print("\n🎯 Testing default query routing...")
     try:
-        response = await client.chat("Find some interesting events in San Francisco")
+        response = await api_client.chat("Find some interesting events in San Francisco")
         
         # Verify workflow was created
         assert "workflow_id" in response, "Response should contain workflow_id"
@@ -295,7 +295,7 @@ async def test_default_query(client: DurableAgentAPIClient):
         return False
 
 
-async def test_multiple_weather_queries(client: DurableAgentAPIClient):
+async def test_multiple_weather_queries(api_client: DurableAgentAPIClient):
     """Test multiple weather queries with different formats."""
     print("\n🌦️ Testing multiple weather query formats...")
     
@@ -309,7 +309,7 @@ async def test_multiple_weather_queries(client: DurableAgentAPIClient):
     for i, query in enumerate(weather_queries, 1):
         try:
             print(f"  [{i}/3] Testing: {query}")
-            response = await client.chat(query)
+            response = await api_client.chat(query)
             
             assert "workflow_id" in response, "Response should contain workflow_id"
             assert response["status"] == "completed", f"Expected status 'completed', got {response['status']}"
@@ -334,7 +334,7 @@ async def main():
     print("=" * 60)
     
     # Create API client
-    async with DurableAgentAPIClient() as client:
+    async with DurableAgentAPIClient() as api_client:
         # Run all tests
         tests = [
             # Basic API tests
@@ -358,7 +358,7 @@ async def main():
         
         results = []
         for test_func in tests:
-            result = await test_func(client)
+            result = await test_func(api_client)
             results.append(result)
             # No delay needed - server can handle it
         

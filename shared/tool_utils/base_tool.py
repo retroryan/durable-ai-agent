@@ -47,6 +47,9 @@ class BaseTool(BaseModel, ABC):
     MODULE: ClassVar[
         str
     ]  # The module/category the tool belongs to (e.g., "ecommerce", "productivity")
+    
+    # Class-level indicator for MCP vs traditional tools
+    is_mcp: ClassVar[bool] = False  # Default for all traditional tools
 
     # Instance fields that define the tool's characteristics
     description: str = Field(
@@ -69,6 +72,9 @@ class BaseTool(BaseModel, ABC):
         Also ensures that the NAME is a valid Python identifier.
         """
         super().__init_subclass__(**kwargs)
+        # Skip validation for abstract classes
+        if ABC in cls.__bases__:
+            return
         if not hasattr(cls, "NAME"):
             raise TypeError(f"{cls.__name__} must define a 'NAME' class variable.")
         if not hasattr(cls, "MODULE"):

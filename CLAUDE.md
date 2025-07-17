@@ -102,6 +102,11 @@ docker-compose --profile forecast up
 # - Temporal UI: http://localhost:8080
 # - Weather Proxy: http://localhost:8001/mcp
 # - Forecast Service: http://localhost:7778/mcp
+
+# Run MCP servers locally with Poetry:
+poetry run poe mcp-forecast      # Forecast server on port 7778
+poetry run poe mcp-historical    # Historical server on port 7779
+poetry run poe mcp-agricultural  # Agricultural server on port 7780
 ```
 
 ## Architecture Overview
@@ -186,10 +191,13 @@ This provides full transparency and debuggability of the AI's reasoning process.
 
 ### Precision Agriculture Tools
 
-New weather and farming-specific tools in `tools/precision_agriculture/`:
-- **WeatherForecastTool**: Get weather predictions for locations
-- **HistoricalWeatherTool**: Access past weather data
-- **AgriculturalWeatherTool**: Get farming-specific weather conditions
+Weather and farming-specific tools in `tools/precision_agriculture/`:
+- **WeatherForecastTool**: Get weather predictions for locations (traditional)
+- **HistoricalWeatherTool**: Access past weather data (traditional)
+- **AgriculturalWeatherTool**: Get farming-specific weather conditions (traditional)
+- **WeatherForecastMCPTool**: Weather predictions via MCP (`get_weather_forecast_mcp`)
+- **HistoricalWeatherMCPTool**: Historical data via MCP (`get_historical_weather_mcp`)
+- **AgriculturalWeatherMCPTool**: Agricultural conditions via MCP (`get_agricultural_conditions_mcp`)
 
 ## Activities and MCP Integration
 
@@ -198,9 +206,10 @@ The project includes several Temporal activities:
 ### Core Activities
 
 1. **react_agent_activity.py** - Reasoning and tool selection using DSPy
-2. **tool_execution_activity.py** - Executes tools and updates trajectory
-3. **extract_agent_activity.py** - Synthesizes final answers from trajectories
-4. **find_events_activity.py** - Legacy activity for event finding (hardcoded tool)
+2. **tool_execution_activity.py** - Executes traditional tools and updates trajectory
+3. **mcp_execution_activity.py** - Executes MCP tools via remote servers
+4. **extract_agent_activity.py** - Synthesizes final answers from trajectories
+5. **find_events_activity.py** - Legacy activity for event finding (hardcoded tool)
 
 ### MCP Utilities (`activities/mcp_utils.py`)
 
@@ -258,6 +267,38 @@ The `SimpleAgentWorkflow` acts as a router for different reasoning patterns:
 - Frontend components (Phase 4) are not yet implemented
 - The trajectory flow has been carefully designed to avoid double-writes (see trajectory-in-depth.md)
 - Tool registry supports mock results for testing (`mock_results=True` by default)
+
+## MCP Tool Guidelines
+
+When working with MCP (Model Context Protocol) tools:
+
+1. **Consolidated Tools**: All weather/agriculture tools are now MCP-enabled (no separate `_mcp` tools)
+2. **Inheritance**: MCP tools extend `MCPTool` base class, not `BaseTool` directly
+3. **Identification**: Tools are identified as MCP via `is_mcp: ClassVar[bool] = True`
+4. **Dynamic Tool Names**: Tool names are computed dynamically based on `MCP_USE_PROXY`:
+   - When `MCP_USE_PROXY=true` (default): Names are prefixed (e.g., `forecast_get_weather_forecast`)
+   - When `MCP_USE_PROXY=false`: Names are unprefixed (e.g., `get_weather_forecast`)
+5. **Mock Mode**: All MCP tools support `TOOLS_MOCK=true` environment variable
+6. **Registration**: MCP tools are registered without `_mcp` suffix
+7. **Routing**: Workflow routes to `ToolExecutionActivity` which handles MCP tools based on `is_mcp`
+8. **No Direct Execution**: MCP tools raise `RuntimeError` if `execute()` is called directly
+
+Example MCP tool structure:
+```python
+class WeatherForecastTool(MCPTool):
+    NAME: ClassVar[str] = "get_weather_forecast"  # No _mcp suffix
+    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast"
+    is_mcp: ClassVar[bool] = True  # Identifies this as an MCP tool
+    
+    description: str = "Get weather forecast via MCP service"
+    args_model: Type[BaseModel] = ForecastRequest
+    
+    # MCP configuration
+    mcp_server_name: str = "forecast"
+    # Note: mcp_tool_name removed - computed dynamically in get_mcp_config()
+    
+    # get_mcp_config() inherited from MCPTool base class
+```
 
 
 ## Critical Architecture Guidelines

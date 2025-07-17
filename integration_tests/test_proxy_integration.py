@@ -5,6 +5,12 @@ This is a direct Python program (not pytest) to avoid complexity and issues
 with async test runners and connection pooling.
 
 Tests the weather proxy running in docker-compose on port 8001.
+
+IMPORTANT: This test specifically validates PROXY MODE behavior where FastMCP's
+mount() feature automatically prefixes tool names with the service name.
+For example: "get_weather_forecast" becomes "forecast_get_weather_forecast"
+
+This is the expected behavior when MCP_USE_PROXY=true (default).
 """
 import asyncio
 import json
@@ -26,7 +32,7 @@ else:
     print(f"No .env file found at {env_path}, using defaults")
 
 sys.path.insert(0, str(project_root))
-from shared.mcp_client_manager_v2 import MCPClientManager
+from shared.mcp_client_manager import MCPClientManager
 
 
 async def test_proxy_integration():
@@ -66,9 +72,11 @@ async def test_proxy_integration():
         forecast_tools = [name for name in tool_names if name.startswith("forecast_")]
         print(f"  - Forecast tools: {len(forecast_tools)}")
 
-        # Current tools
-        current_tools = [name for name in tool_names if name.startswith("current_")]
-        print(f"  - Current tools: {len(current_tools)}")
+        # Agricultural tools
+        agricultural_tools = [
+            name for name in tool_names if name.startswith("agricultural_")
+        ]
+        print(f"  - Agricultural tools: {len(agricultural_tools)}")
 
         # Historical tools
         historical_tools = [
@@ -78,33 +86,33 @@ async def test_proxy_integration():
 
         # Verify we have tools from all services
         assert len(forecast_tools) > 0, "No forecast tools found"
-        assert len(current_tools) > 0, "No current tools found"
+        assert len(agricultural_tools) > 0, "No agricultural tools found"
         assert len(historical_tools) > 0, "No historical tools found"
         print("✓ All service tools are available")
 
-        # Test 3: Call current weather tool
-        print("\n3. Testing current weather tool...")
+        # Test 3: Call forecast weather tool
+        print("\n3. Testing forecast weather tool...")
         result = await client.call_tool(
-            "current_get_current_weather", {"location": "Melbourne"}
+            "forecast_get_weather_forecast", {"request": {"location": "Melbourne", "days": 2}}
         )
 
-        # The proxy services return simple strings for demo
-        print(f"✓ Current weather result: {result}")
+        # The proxy services return structured data
+        print(f"✓ Forecast weather result: {type(result)}")
 
-        # Test 4: Call forecast tool
-        print("\n4. Testing forecast tool...")
+        # Test 4: Call agricultural tool
+        print("\n4. Testing agricultural tool...")
         result = await client.call_tool(
-            "forecast_get_forecast", {"location": "Sydney", "days": 3}
+            "agricultural_get_agricultural_conditions", {"request": {"location": "Sydney", "days": 3, "crop_type": "corn"}}
         )
-        print(f"✓ Forecast result: {result}")
+        print(f"✓ Agricultural result: {type(result)}")
 
         # Test 5: Call historical tool
         print("\n5. Testing historical tool...")
         result = await client.call_tool(
             "historical_get_historical_weather",
-            {"location": "Brisbane", "date": "2024-01-01"},
+            {"request": {"location": "Brisbane", "start_date": "2024-01-01", "end_date": "2024-01-07"}},
         )
-        print(f"✓ Historical result: {result}")
+        print(f"✓ Historical result: {type(result)}")
 
         # Test 6: Connection reuse
         print("\n6. Testing connection reuse...")
@@ -116,9 +124,9 @@ async def test_proxy_integration():
         print("\n7. Testing multiple sequential calls...")
         for i in range(3):
             result = await client.call_tool(
-                "current_get_temperature", {"location": f"City{i}"}
+                "forecast_get_weather_forecast", {"request": {"location": f"City{i}", "days": 1}}
             )
-            print(f"  Call {i+1}: {result}")
+            print(f"  Call {i+1}: {type(result)}")
         print("✓ Multiple calls successful")
 
         # Cleanup

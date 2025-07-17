@@ -15,6 +15,11 @@ from temporalio.client import Client
 
 from api.services.workflow_service import WorkflowService
 from models.types import Response, WorkflowInput, WorkflowState, AgenticAIWorkflowState
+from models.api_models import (
+    SendMessageRequest, SendMessageResponse,
+    EndConversationResponse, ConversationHistoryResponse,
+    WorkflowStatusResponse, SummaryRequestResponse
+)
 from shared.config import get_settings
 
 # Create logs directory if it doesn't exist
@@ -367,6 +372,144 @@ async def get_ai_workflow_tools(workflow_id: str):
         logger.error(
             f"Error getting AI workflow tools for workflow_id: {workflow_id}, error: {e}"
         )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/workflow/{workflow_id}/message", response_model=SendMessageResponse)
+async def send_message(workflow_id: str, request: SendMessageRequest):
+    """
+    Send a message signal to running workflow.
+    
+    Note: In the current architecture, workflows complete after processing one message.
+    This endpoint is provided for future signal-driven conversation support.
+    """
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        logger.info(f"Sending message to workflow_id: {workflow_id}")
+        
+        # Get workflow handle
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        
+        # Signal the workflow
+        await handle.signal("user_message", request.message)
+        
+        return SendMessageResponse(
+            status="message sent",
+            workflow_id=workflow_id
+        )
+    except Exception as e:
+        logger.error(f"Error sending message to workflow_id: {workflow_id}, error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/workflow/{workflow_id}/end", response_model=EndConversationResponse)
+async def end_conversation(workflow_id: str):
+    """End a conversation gracefully."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        logger.info(f"Ending conversation for workflow_id: {workflow_id}")
+        
+        # Get workflow handle
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        
+        # Signal end conversation
+        await handle.signal("end_conversation")
+        
+        # Try to query final state
+        try:
+            history = await handle.query("get_conversation_history")
+            message_count = len(history)
+        except:
+            message_count = None
+        
+        return EndConversationResponse(
+            status="ending conversation",
+            final_message_count=message_count
+        )
+    except Exception as e:
+        logger.error(f"Error ending conversation for workflow_id: {workflow_id}, error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/workflow/{workflow_id}/history", response_model=ConversationHistoryResponse)
+async def get_history(workflow_id: str):
+    """Query conversation history."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        logger.info(f"Getting conversation history for workflow_id: {workflow_id}")
+        
+        # Get workflow handle
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        
+        # Query conversation history
+        history = await handle.query("get_conversation_history")
+        
+        return ConversationHistoryResponse(
+            conversation_history=history,
+            total_messages=len(history),
+            workflow_id=workflow_id
+        )
+    except Exception as e:
+        logger.error(f"Error getting history for workflow_id: {workflow_id}, error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/workflow/{workflow_id}/workflow-status", response_model=WorkflowStatusResponse)
+async def get_workflow_status_detailed(workflow_id: str):
+    """Get detailed workflow status."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        logger.info(f"Getting detailed workflow status for workflow_id: {workflow_id}")
+        
+        # Get workflow handle
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        
+        # Query workflow status
+        status = await handle.query("get_workflow_status")
+        
+        return WorkflowStatusResponse(
+            workflow_id=workflow_id,
+            is_processing=status.get("is_processing", False),
+            should_end=status.get("should_end", False),
+            message_count=status.get("message_count", 0),
+            pending_messages=status.get("pending_messages", 0),
+            interaction_count=status.get("interaction_count", 0)
+        )
+    except Exception as e:
+        logger.error(f"Error getting detailed status for workflow_id: {workflow_id}, error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/workflow/{workflow_id}/request-summary", response_model=SummaryRequestResponse)
+async def request_summary(workflow_id: str):
+    """Request a conversation summary."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        logger.info(f"Requesting summary for workflow_id: {workflow_id}")
+        
+        # Get workflow handle
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        
+        # Signal summary request
+        await handle.signal("request_summary")
+        
+        return SummaryRequestResponse(
+            status="summary requested",
+            summary_requested=True,
+            workflow_id=workflow_id
+        )
+    except Exception as e:
+        logger.error(f"Error requesting summary for workflow_id: {workflow_id}, error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -75,7 +75,7 @@ class AgricultureToolSet(ToolSet):
         super().__init__(
             config=ToolSetConfig(
                 name=self.NAME,
-                description="Weather forecasting, agricultural conditions, and historical weather data tools",
+                description="Weather forecasting, agricultural conditions, and historical weather data tools via MCP",
                 tool_classes=[
                     AgriculturalWeatherTool,
                     WeatherForecastTool,

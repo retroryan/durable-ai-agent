@@ -59,7 +59,7 @@ class SimpleAgentWorkflow:
 
         # Convert child workflow result to expected format
         activity_result = {
-            "message": f"Child workflow result: {child_result.message}",
+            "message": child_result.message,
             "event_count": child_result.event_count,
         }
         workflow.logger.info(
@@ -67,37 +67,6 @@ class SimpleAgentWorkflow:
         )
         return activity_result
 
-    async def _handle_historical_query(self, user_message: str, user_name: str) -> dict:
-        """Handle historical weather queries."""
-        workflow.logger.info(
-            f"[SimpleAgentWorkflow] Historical keyword detected, calling weather_historical_activity"
-        )
-        return await workflow.execute_activity(
-            "weather_historical_activity",
-            args=[user_message, user_name],
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=RetryPolicy(
-                maximum_attempts=3,
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=10),
-            ),
-        )
-
-    async def _handle_agricultural_query(self, user_message: str, user_name: str) -> dict:
-        """Handle agricultural queries."""
-        workflow.logger.info(
-            f"[SimpleAgentWorkflow] Agriculture keyword detected, calling agricultural_activity"
-        )
-        return await workflow.execute_activity(
-            "agricultural_activity",
-            args=[user_message, user_name],
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=RetryPolicy(
-                maximum_attempts=3,
-                initial_interval=timedelta(seconds=1),
-                maximum_interval=timedelta(seconds=10),
-            ),
-        )
 
     async def _handle_default_query(self, user_message: str, user_name: str) -> dict:
         """Handle default queries (backward compatibility with events)."""
@@ -141,10 +110,6 @@ class SimpleAgentWorkflow:
         # Route to appropriate activity based on user message content
         if user_message.lower().startswith("weather:"):
             activity_result = await self._handle_weather_query(user_message, user_name)
-        elif "historical" in user_message.lower():
-            activity_result = await self._handle_historical_query(user_message, user_name)
-        elif "agriculture" in user_message.lower():
-            activity_result = await self._handle_agricultural_query(user_message, user_name)
         else:
             activity_result = await self._handle_default_query(user_message, user_name)
 

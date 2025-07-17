@@ -1,22 +1,31 @@
+import os
 from datetime import datetime, timedelta
 from typing import ClassVar, Optional, Type
 
 import requests
 from pydantic import BaseModel, Field, field_validator
 
-from shared.tool_utils.base_tool import BaseTool
+from models.types import MCPConfig
+from models.tool_definitions import MCPServerDefinition
+from shared.tool_utils.mcp_tool import MCPTool
 
 
 class AgriculturalRequest(BaseModel):
-    latitude: float = Field(
+    location: Optional[str] = Field(
+        None,
+        description="Location name (e.g., 'Chicago, IL'). Slower due to geocoding.",
+    )
+    latitude: Optional[float] = Field(
+        None,
         ge=-90,
         le=90,
-        description="REQUIRED: Latitude coordinate (-90 to 90) - extract from location names",
+        description="Direct latitude (-90 to 90). PREFERRED for faster response."
     )
-    longitude: float = Field(
+    longitude: Optional[float] = Field(
+        None,
         ge=-180,
         le=180,
-        description="REQUIRED: Longitude coordinate (-180 to 180) - extract from location names",
+        description="Direct longitude (-180 to 180). PREFERRED for faster response."
     )
     days: int = Field(
         default=7, ge=1, le=7, description="Number of forecast days (1-7)"
@@ -27,7 +36,7 @@ class AgriculturalRequest(BaseModel):
 
     @field_validator("latitude", "longitude", mode="before")
     def convert_to_float(cls, v):
-        if isinstance(v, str):
+        if v is not None and isinstance(v, str):
             v = v.strip(" \"' ")
             try:
                 return float(v)
@@ -36,15 +45,63 @@ class AgriculturalRequest(BaseModel):
         return v
 
 
-class AgriculturalWeatherTool(BaseTool):
+class AgriculturalWeatherTool(MCPTool):
     NAME: ClassVar[str] = "get_agricultural_conditions"
     MODULE: ClassVar[str] = "tools.precision_agriculture.agricultural_weather"
+    is_mcp: ClassVar[bool] = True
 
     description: str = (
         "Get agricultural weather conditions including soil moisture, evapotranspiration, "
         "and growing conditions for a location"
     )
     args_model: Type[BaseModel] = AgriculturalRequest
+
+    # MCP configuration
+    # mcp_server_name identifies which MCP server this tool connects to
+    # This is used to construct the prefixed tool name when using the proxy
+    mcp_server_name: str = "agricultural"
+    
+    # Note: get_mcp_config() is inherited from MCPTool base class
+    # It handles dynamic tool name resolution based on MCP_USE_PROXY
+
+    def execute(
+        self,
+        location: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        days: int = 7,
+        crop_type: Optional[str] = None,
+    ) -> str:
+        # Only used in mock mode for testing
+        if self.mock_results:
+            # For mock results, prefer coordinates if available
+            if latitude is not None and longitude is not None:
+                return self._mock_results(latitude, longitude, days, crop_type)
+            elif location:
+                # Mock geocoding for common locations
+                coords = self._mock_geocode(location)
+                return self._mock_results(coords[0], coords[1], days, crop_type)
+            else:
+                raise ValueError("Either location or coordinates required")
+        else:
+            # Real execution happens via MCP in ToolExecutionActivity
+            raise RuntimeError("MCP tools should be executed via activity")
+    
+    def _mock_geocode(self, location: str) -> tuple[float, float]:
+        """Mock geocoding for common locations."""
+        mock_coords = {
+            "new york": (40.7128, -74.0060),
+            "chicago": (41.8781, -87.6298),
+            "los angeles": (34.0522, -118.2437),
+            "sydney": (-33.8688, 151.2093),
+            "melbourne": (-37.8136, 144.9631),
+        }
+        location_lower = location.lower()
+        for key, coords in mock_coords.items():
+            if key in location_lower:
+                return coords
+        # Default to NYC if not found
+        return (40.7128, -74.0060)
 
     def _mock_results(
         self,
@@ -74,119 +131,6 @@ Daily Agricultural Summary:
   Precipitation: 0mm
   Evapotranspiration: 3.2mm
   Vapor Pressure Deficit: 1.2kPa"""
-
-    def _real_call(
-        self,
-        latitude: float,
-        longitude: float,
-        days: int = 7,
-        crop_type: Optional[str] = None,
-    ) -> str:
-        """Make real API call to get agricultural weather data."""
-        try:
-            location_name = f"Agricultural location at {latitude:.4f}, {longitude:.4f}"
-            if crop_type:
-                location_name += f" ({crop_type} farming)"
-
-            # Call Open-Meteo API with agricultural parameters
-            params = {
-                "latitude": latitude,
-                "longitude": longitude,
-                "forecast_days": days,
-                "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,et0_fao_evapotranspiration,vapor_pressure_deficit_max",
-                "hourly": "temperature_2m,relative_humidity_2m,precipitation,soil_temperature_0cm,soil_temperature_6cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm",
-                "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code",
-                "timezone": "auto",
-            }
-
-            response = requests.get(
-                "https://api.open-meteo.com/v1/forecast", params=params, timeout=30.0
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            # Format the response as a readable string
-            current_hourly = data.get("hourly", {})
-            daily = data.get("daily", {})
-
-            # Get latest soil moisture values
-            soil_moisture_0_1 = current_hourly.get("soil_moisture_0_to_1cm", [])
-            soil_moisture_1_3 = current_hourly.get("soil_moisture_1_to_3cm", [])
-            soil_moisture_3_9 = current_hourly.get("soil_moisture_3_to_9cm", [])
-            soil_moisture_9_27 = current_hourly.get("soil_moisture_9_to_27cm", [])
-
-            # Build formatted output
-            output = f"""Agricultural Conditions for {latitude:.4f}, {longitude:.4f}
-Location: {location_name}
-Forecast Period: {days} days
-
-Current Soil Conditions:"""
-
-            if soil_moisture_0_1:
-                output += f"\n- Surface (0-1cm): {soil_moisture_0_1[0]:.1f}% moisture"
-            if soil_moisture_1_3:
-                output += f"\n- Shallow (1-3cm): {soil_moisture_1_3[0]:.1f}% moisture"
-            if soil_moisture_3_9:
-                output += f"\n- Root Zone (3-9cm): {soil_moisture_3_9[0]:.1f}% moisture"
-            if soil_moisture_9_27:
-                output += f"\n- Deep (9-27cm): {soil_moisture_9_27[0]:.1f}% moisture"
-
-            output += "\n\nDaily Agricultural Summary:"
-
-            # Add daily agricultural data
-            if daily and "time" in daily:
-                et0_data = daily.get("et0_fao_evapotranspiration", [])
-                vpd_data = daily.get("vapor_pressure_deficit_max", [])
-
-                for i in range(min(days, len(daily["time"]))):
-                    date = daily["time"][i]
-                    temp_max = (
-                        daily.get("temperature_2m_max", [])[i]
-                        if i < len(daily.get("temperature_2m_max", []))
-                        else "N/A"
-                    )
-                    temp_min = (
-                        daily.get("temperature_2m_min", [])[i]
-                        if i < len(daily.get("temperature_2m_min", []))
-                        else "N/A"
-                    )
-                    precip = (
-                        daily.get("precipitation_sum", [])[i]
-                        if i < len(daily.get("precipitation_sum", []))
-                        else "N/A"
-                    )
-                    et0 = et0_data[i] if i < len(et0_data) else "N/A"
-                    vpd = vpd_data[i] if i < len(vpd_data) else "N/A"
-
-                    output += f"\n- {date}:"
-                    output += f"\n  Temperature: {temp_max}/{temp_min}°C"
-                    output += f"\n  Precipitation: {precip}mm"
-                    output += f"\n  Evapotranspiration: {et0}mm"
-                    output += f"\n  Vapor Pressure Deficit: {vpd}kPa"
-
-            if crop_type:
-                output += f"\n\nCrop-Specific Notes for {crop_type}:"
-                output += (
-                    f"\n- Monitor soil moisture levels for optimal growing conditions"
-                )
-                output += f"\n- Adjust irrigation based on evapotranspiration rates"
-
-            return output
-
-        except Exception as e:
-            return f"Error retrieving agricultural conditions: {str(e)}"
-
-    def execute(
-        self,
-        latitude: float,
-        longitude: float,
-        days: int = 7,
-        crop_type: Optional[str] = None,
-    ) -> str:
-        if self.mock_results:
-            return self._mock_results(latitude, longitude, days, crop_type)
-        else:
-            return self._real_call(latitude, longitude, days, crop_type)
 
     def get_test_cases(self) -> list[dict]:
         return [

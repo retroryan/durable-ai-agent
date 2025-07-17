@@ -10,14 +10,14 @@ The durable-ai-agent demonstrates how to address fundamental limitations in trad
 
 ### 1. DSPy Implementation - From Brittle Prompts to Context Engineering
 
-#### Traditional AI Application (Before)
+#### Traditional AI Application 
 - Manual prompt templates with string concatenation
 - JSON parsing with regex and error-prone string manipulation
 - Hardcoded prompt generation in `prompts/agent_prompt_generators.py`
 - Fragile parsing of LLM responses
 - No type safety or validation
 
-#### Durable AI Agent (After)
+#### Durable AI Agent 
 - Leverages DSPy for structured, type-safe context engineering
 - Declarative signatures defining input/output schemas
 - Automatic prompt generation and validation
@@ -27,13 +27,13 @@ The durable-ai-agent demonstrates how to address fundamental limitations in trad
 
 ### 2. Custom Agentic Loop with DSPy React
 
-#### Traditional AI Application (Before)
+#### Traditional AI Application 
 - Basic workflow with often hardcoded paths
 - Linear execution flow without reasoning transparency
 - Limited ability to handle complex multi-step tasks
 - No visibility into decision-making process
 
-#### Durable AI Agent (After)
+#### Durable AI Agent 
 - Sophisticated multi-step reasoning loop inspired by DSPy React
 - Thought → Action → Observation cycles with full transparency
 - Trajectory-based state management tracking all iterations
@@ -49,14 +49,13 @@ The custom agentic loop in `agentic_loop/react_agent.py` implements:
 
 ### 3. Enhanced MCP Client Management
 
-#### Traditional AI Application (Before)
-- Basic stdio-only MCP client in `mcp_client_manager.py`
+#### Traditional AI Application 
 - Limited to process-based communication
 - No connection pooling or reuse
 - Complex session management
 
 #### Durable AI Agent (After)
-- Advanced MCP client (`mcp_client_manager_v2.py`) supporting:
+- Advanced MCP client (`mcp_client_manager.py`) supporting:
   - Both stdio and streaming HTTP connections
   - Connection pooling for reuse across tool calls
   - FastMCP integration for simpler, more robust implementation
@@ -64,13 +63,13 @@ The custom agentic loop in `agentic_loop/react_agent.py` implements:
   - Automatic session lifecycle management
   - Support for both local processes and remote HTTP endpoints
 
-### 4. Agriculture MCP Servers: Coming Soon!
+### 4. Agriculture MCP Servers
 
-#### Traditional AI Application (Before)
+#### Traditional AI Application 
 - No specialized MCP servers
 - Generic tools without domain expertise
 
-#### Durable AI Agent (After)
+#### Durable AI Agent 
 Three new precision agriculture MCP servers in `mcp_servers/` are ready for deployment:
 - **agricultural_server.py**: Soil moisture, evapotranspiration, growing conditions
 - **forecast_server.py**: Weather forecasting with multiple day predictions
@@ -85,12 +84,12 @@ All servers feature:
 
 ### 5. MCP Server Proxy for Container Deployment
 
-#### Traditional AI Application (Before)
+#### Traditional AI Application 
 - Individual server deployments only
 - Complex orchestration for multiple servers
 - No unified access point
 
-#### Durable AI Agent (After)
+#### Durable AI Agent 
 Unified proxy server (`mcp_proxy/simple_proxy.py`):
 - Combines multiple MCP servers into single container
 - Mounts services with prefixes (forecast/, current/, historical/)

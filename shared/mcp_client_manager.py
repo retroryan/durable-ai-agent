@@ -1,37 +1,23 @@
 import asyncio
-from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Dict, Tuple
+import os
+from typing import Any, Dict
 
+from fastmcp import Client
 from temporalio import activity
 
 from models.tool_definitions import MCPServerDefinition
-
-# Import MCP client libraries
-if TYPE_CHECKING:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-else:
-    try:
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
-    except ImportError:
-        # Fallback if MCP not installed
-        ClientSession = None
-        StdioServerParameters = None
-        stdio_client = None
 
 
 class MCPClientManager:
     """Manages pooled MCP client connections for reuse across tool calls"""
 
     def __init__(self):
-        self._clients: Dict[str, Any] = {}
-        self._connections: Dict[str, Tuple[Any, Any, Any]] = {}
+        self._clients: Dict[str, Client] = {}
         self._lock = asyncio.Lock()
 
     async def get_client(
         self, server_def: MCPServerDefinition | Dict[str, Any] | None
-    ) -> Any:
+    ) -> Client:
         """Return existing client or create new one, keyed by server definition hash"""
         async with self._lock:
             key = self._get_server_key(server_def)
@@ -77,91 +63,90 @@ class MCPClientManager:
         else:
             return server_def.name
 
-    def _build_connection(
+    def _build_transport(
         self, server_def: MCPServerDefinition | Dict[str, Any] | None
-    ) -> Dict[str, Any]:
-        """Build connection parameters from MCPServerDefinition or dict"""
+    ) -> str | Dict[str, Any]:
+        """Build transport specification from MCPServerDefinition or dict"""
         if server_def is None:
-            # Default to stdio connection with the main server
-            return {
-                "type": "stdio",
-                "command": "python",
-                "args": ["server.py"],
-                "env": {},
-            }
+            # Default to stdio connection with server.py
+            return "server.py"
 
         # Handle both MCPServerDefinition objects and dicts (from Temporal serialization)
         if isinstance(server_def, dict):
-            return {
-                "type": server_def.get("connection_type", "stdio"),
-                "command": server_def.get("command", "python"),
-                "args": server_def.get("args", ["server.py"]),
-                "env": server_def.get("env", {}) or {},
-            }
+            conn_type = server_def.get("connection_type", "stdio")
+            if conn_type == "http":
+                # For HTTP, return the URL directly
+                return server_def.get("url", "http://localhost:8000/mcp")
+            else:
+                # For stdio, we need to check if it's a simple script path
+                # or a more complex command with args
+                command = server_def.get("command", "python")
+                args = server_def.get("args", ["server.py"])
+                env = server_def.get("env", {})
 
-        return {
-            "type": server_def.connection_type,
-            "command": server_def.command,
-            "args": server_def.args,
-            "env": server_def.env or {},
-        }
-
-    @asynccontextmanager
-    async def _stdio_connection(self, command: str, args: list, env: dict):
-        """Create stdio connection to MCP server"""
-        if stdio_client is None:
-            raise Exception("MCP client libraries not available")
-
-        # Create server parameters
-        server_params = StdioServerParameters(command=command, args=args, env=env)
-
-        async with stdio_client(server_params) as (read, write):
-            yield read, write
+                # If it's just python script.py, return the script path
+                if command == "python" and len(args) == 1 and args[0].endswith(".py"):
+                    return args[0]
+                else:
+                    # Otherwise, use MCPConfig format for stdio
+                    return {
+                        "mcpServers": {
+                            "server": {
+                                "transport": "stdio",
+                                "command": command,
+                                "args": args,
+                                "env": env or {},
+                            }
+                        }
+                    }
+        else:
+            # Handle MCPServerDefinition object
+            if server_def.connection_type == "http":
+                return server_def.url or "http://localhost:8000/mcp"
+            else:
+                # For stdio
+                if (
+                    server_def.command == "python"
+                    and len(server_def.args) == 1
+                    and server_def.args[0].endswith(".py")
+                ):
+                    return server_def.args[0]
+                else:
+                    return {
+                        "mcpServers": {
+                            "server": {
+                                "transport": "stdio",
+                                "command": server_def.command,
+                                "args": server_def.args,
+                                "env": server_def.env or {},
+                            }
+                        }
+                    }
 
     async def _create_client(
         self, server_def: MCPServerDefinition | Dict[str, Any] | None, key: str
     ):
         """Create and store new client connection"""
-        connection = self._build_connection(server_def)
+        transport = self._build_transport(server_def)
 
-        if connection["type"] == "stdio":
-            # Create stdio connection
-            connection_manager = self._stdio_connection(
-                command=connection.get("command", "python"),
-                args=connection.get("args", ["server.py"]),
-                env=connection.get("env", {}),
-            )
+        # Create FastMCP client
+        client = Client(transport)
 
-            # Enter the connection context
-            read, write = await connection_manager.__aenter__()
+        # Initialize the client (enter context)
+        await client.__aenter__()
 
-            # Create and initialize client session
-            session = ClientSession(read, write)
-            await session.initialize()
-
-            # Store both the session and connection manager for cleanup
-            self._clients[key] = session
-            self._connections[key] = (connection_manager, read, write)
-        else:
-            raise Exception(f"Unsupported connection type: {connection['type']}")
+        # Store the client
+        self._clients[key] = client
 
     async def cleanup(self):
         """Close all connections gracefully"""
         async with self._lock:
             # Close all client sessions
-            for session in self._clients.values():
+            for client in self._clients.values():
                 try:
-                    await session.close()
+                    await client.__aexit__(None, None, None)
                 except Exception as e:
-                    activity.logger.warning(f"Error closing MCP session: {e}")
-
-            # Exit all connection contexts
-            for connection_manager, read, write in self._connections.values():
-                try:
-                    await connection_manager.__aexit__(None, None, None)
-                except Exception as e:
-                    activity.logger.warning(f"Error closing MCP connection: {e}")
+                    activity.logger.warning(f"Error closing MCP client: {e}")
 
             self._clients.clear()
-            self._connections.clear()
             activity.logger.info("All MCP connections closed")

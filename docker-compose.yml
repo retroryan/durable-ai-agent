@@ -83,9 +83,10 @@ services:
     depends_on:
       - temporal
     env_file:
-      - .env
+      - worker.env
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
+      - TOOLS_MOCK=true
     command: python scripts/run_worker.py
     networks:
       - durable-network
@@ -130,6 +131,8 @@ services:
       - "8001:8000"
     networks:
       - durable-network
+    environment:
+      - TOOLS_MOCK=true
     volumes:
       - ./logs:/app/logs
     command: python -m mcp_proxy.simple_proxy

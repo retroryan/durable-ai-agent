@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from temporalio import activity
 
-from shared.mcp_client_manager_v2 import MCPClientManager
+from shared.mcp_client_manager import MCPClientManager
 
 
 def get_user_display_name(user_name: str) -> str:

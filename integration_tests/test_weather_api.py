@@ -29,7 +29,8 @@ async def main():
     failed_tests = 0
     
     # Create API client
-    async with DurableAgentAPIClient() as client:
+    # Use a longer timeout for complex queries
+    async with DurableAgentAPIClient(timeout=60) as client:
         for i, test_case in enumerate(test_cases, 1):
             print(f"\n📍 Test {i}/{len(test_cases)}: {test_case.description}")
             print(f"🎯 Scenario: {test_case.scenario}")
@@ -66,7 +67,9 @@ async def main():
                 elif test_case.scenario == "comparison" and any(word in response_message for word in ["compar", "both", "versus"]):
                     print("⚖️  Comparison detected!")
             except Exception as e:
-                print(f"\n❌ Failed to get response: {e}")
+                print(f"\n❌ Failed to get response: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
                 failed_tests += 1
 
             # Wait a bit between calls to avoid overwhelming the API

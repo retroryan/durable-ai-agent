@@ -13,9 +13,7 @@ from activities.react_agent_activity import ReactAgentActivity
 from activities.extract_agent_activity import ExtractAgentActivity
 
 
-from activities.agricultural_activity import agricultural_activity
 from activities.event_finder_activity import find_events_activity
-from activities.weather_historical_activity import weather_historical_activity
 from shared.tool_utils.registry import create_tool_set_registry
 from agentic_loop.react_agent import ReactAgent
 from agentic_loop.extract_agent import ReactExtract
@@ -87,7 +85,7 @@ async def main():
     logging.info(f"ExtractAgent activity created with AnswerExtractionSignature")
 
     tool_execution_activity = ToolExecutionActivity(tool_registry=registry)
-    logging.info(f"ToolExecutionActivity initialized with tool registry")
+    logging.info(f"ToolExecutionActivity initialized with tool registry (handles both traditional and MCP tools)")
 
     # Create the client
     try:
@@ -113,8 +111,6 @@ async def main():
                     extract_agent_activity.run_extract_agent,
                     tool_execution_activity.execute_tool,
                     find_events_activity,
-                    weather_historical_activity,
-                    agricultural_activity,
                 ],
                 activity_executor=activity_executor,
             )
@@ -130,6 +126,8 @@ async def main():
     finally:
         # Cleanup resources
         logging.info("Cleaning up MCP connections")
+        if hasattr(tool_execution_activity, 'cleanup'):
+            await tool_execution_activity.cleanup()
 
 
 if __name__ == "__main__":
