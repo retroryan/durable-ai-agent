@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from temporalio.worker import Worker
 
 from activities.tool_execution_activity import ToolExecutionActivity
-from activities.mcp_execution_activity import MCPExecutionActivity
 from activities.react_agent_activity import ReactAgentActivity
 from activities.extract_agent_activity import ExtractAgentActivity
 
@@ -86,10 +85,7 @@ async def main():
     logging.info(f"ExtractAgent activity created with AnswerExtractionSignature")
 
     tool_execution_activity = ToolExecutionActivity(tool_registry=registry)
-    logging.info(f"ToolExecutionActivity initialized with tool registry")
-    
-    mcp_execution_activity = MCPExecutionActivity(tool_registry=registry)
-    logging.info(f"MCPExecutionActivity initialized with tool registry")
+    logging.info(f"ToolExecutionActivity initialized with tool registry (handles both traditional and MCP tools)")
 
     # Create the client
     try:
@@ -114,7 +110,6 @@ async def main():
                     react_agent_activity.run_react_agent,
                     extract_agent_activity.run_extract_agent,
                     tool_execution_activity.execute_tool,
-                    mcp_execution_activity.execute_mcp_tool,
                     find_events_activity,
                 ],
                 activity_executor=activity_executor,
@@ -131,8 +126,8 @@ async def main():
     finally:
         # Cleanup resources
         logging.info("Cleaning up MCP connections")
-        if hasattr(mcp_execution_activity, 'cleanup'):
-            await mcp_execution_activity.cleanup()
+        if hasattr(tool_execution_activity, 'cleanup'):
+            await tool_execution_activity.cleanup()
 
 
 if __name__ == "__main__":

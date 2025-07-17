@@ -5,6 +5,12 @@ This is a direct Python program (not pytest) to avoid complexity and issues
 with async test runners and connection pooling.
 
 Tests the weather proxy running in docker-compose on port 8001.
+
+IMPORTANT: This test specifically validates PROXY MODE behavior where FastMCP's
+mount() feature automatically prefixes tool names with the service name.
+For example: "get_weather_forecast" becomes "forecast_get_weather_forecast"
+
+This is the expected behavior when MCP_USE_PROXY=true (default).
 """
 import asyncio
 import json

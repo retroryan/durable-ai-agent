@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
+from models.tool_definitions import MCPServerDefinition
+
 
 class Message(BaseModel):
     """A single message in the conversation."""
@@ -134,3 +136,11 @@ class AgenticAIWorkflowState(BaseModel):
     execution_time: float = Field(default=0.0, description="Total execution time in seconds")
     trajectory_keys: list[str] = Field(default_factory=list, description="Keys present in the trajectory")
     trajectory: Optional[Dict[str, Any]] = Field(default=None, description="Full trajectory if requested")
+
+
+class MCPConfig(BaseModel):
+    """Configuration for MCP tool execution."""
+    
+    server_name: str = Field(description="Name identifier for the MCP server")
+    tool_name: str = Field(description="Name of the tool in the MCP server")
+    server_definition: MCPServerDefinition = Field(description="Server connection details")

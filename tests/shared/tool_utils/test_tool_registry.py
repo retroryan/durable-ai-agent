@@ -1,4 +1,4 @@
-"""Tests for tool registry with MCP tools integration."""
+"""Tests for tool registry with consolidated MCP tools."""
 import pytest
 
 from shared.tool_utils.agriculture_tool_set import AgricultureToolSet
@@ -6,93 +6,78 @@ from shared.tool_utils.mcp_tool import MCPTool
 from shared.tool_utils.registry import ToolRegistry, create_tool_set_registry
 
 
-class TestToolRegistryMCPIntegration:
-    """Tests for tool registry with MCP tools."""
+class TestToolRegistryConsolidatedTools:
+    """Tests for tool registry with consolidated MCP tools."""
     
-    def test_agriculture_tool_set_includes_mcp_tools(self):
-        """Test that agriculture tool set includes both traditional and MCP tools."""
+    def test_agriculture_tool_set_has_consolidated_tools(self):
+        """Test that agriculture tool set includes only consolidated MCP tools."""
         tool_set = AgricultureToolSet()
         tool_classes = tool_set.config.tool_classes
         
-        # Should have 6 tools total (3 traditional + 3 MCP)
-        assert len(tool_classes) == 6
+        # Should have 3 consolidated tools
+        assert len(tool_classes) == 3
         
-        # Check traditional tools are present
+        # Check consolidated tools are present
         tool_names = [tc.NAME for tc in tool_classes]
         assert "get_weather_forecast" in tool_names
         assert "get_historical_weather" in tool_names
         assert "get_agricultural_conditions" in tool_names
         
-        # Check MCP tools are present
-        assert "get_weather_forecast_mcp" in tool_names
-        assert "get_historical_weather_mcp" in tool_names
-        assert "get_agricultural_conditions_mcp" in tool_names
+        # No _mcp suffix tools
+        assert "get_weather_forecast_mcp" not in tool_names
+        assert "get_historical_weather_mcp" not in tool_names
+        assert "get_agricultural_conditions_mcp" not in tool_names
     
-    def test_registry_registers_mcp_tools(self):
-        """Test that tool registry properly registers MCP tools."""
+    def test_registry_registers_consolidated_tools(self):
+        """Test that tool registry properly registers consolidated MCP tools."""
         registry = create_tool_set_registry("agriculture", mock_results=True)
         
         # Check all tools are registered
         all_tools = registry.get_all_tools()
-        assert len(all_tools) == 6
+        assert len(all_tools) == 3
         
-        # Check MCP tools are accessible
-        forecast_mcp = registry.get_tool("get_weather_forecast_mcp")
-        assert forecast_mcp is not None
-        assert isinstance(forecast_mcp, MCPTool)
-        assert forecast_mcp.uses_mcp is True
+        # Check tools are accessible and are MCP tools
+        forecast = registry.get_tool("get_weather_forecast")
+        assert forecast is not None
+        assert isinstance(forecast, MCPTool)
+        assert forecast.__class__.is_mcp is True
         
-        historical_mcp = registry.get_tool("get_historical_weather_mcp")
-        assert historical_mcp is not None
-        assert isinstance(historical_mcp, MCPTool)
-        assert historical_mcp.uses_mcp is True
+        historical = registry.get_tool("get_historical_weather")
+        assert historical is not None
+        assert isinstance(historical, MCPTool)
+        assert historical.__class__.is_mcp is True
         
-        agricultural_mcp = registry.get_tool("get_agricultural_conditions_mcp")
-        assert agricultural_mcp is not None
-        assert isinstance(agricultural_mcp, MCPTool)
-        assert agricultural_mcp.uses_mcp is True
+        agricultural = registry.get_tool("get_agricultural_conditions")
+        assert agricultural is not None
+        assert isinstance(agricultural, MCPTool)
+        assert agricultural.__class__.is_mcp is True
     
-    def test_registry_distinguishes_tool_types(self):
-        """Test that registry can distinguish between traditional and MCP tools."""
+    def test_consolidated_tools_have_mcp_config(self):
+        """Test that consolidated tools have MCP configuration."""
         registry = create_tool_set_registry("agriculture", mock_results=True)
         
-        # Get traditional tool
-        traditional_forecast = registry.get_tool("get_weather_forecast")
-        assert traditional_forecast is not None
-        assert not isinstance(traditional_forecast, MCPTool)
-        assert traditional_forecast.uses_mcp is False
+        # Get tools
+        forecast = registry.get_tool("get_weather_forecast")
+        historical = registry.get_tool("get_historical_weather")
+        agricultural = registry.get_tool("get_agricultural_conditions")
         
-        # Get MCP tool
-        mcp_forecast = registry.get_tool("get_weather_forecast_mcp")
-        assert mcp_forecast is not None
-        assert isinstance(mcp_forecast, MCPTool)
-        assert mcp_forecast.uses_mcp is True
+        # All should have MCP config methods
+        assert hasattr(forecast, 'get_mcp_config')
+        assert hasattr(historical, 'get_mcp_config')
+        assert hasattr(agricultural, 'get_mcp_config')
+        
+        # Test get_mcp_config returns valid config
+        forecast_config = forecast.get_mcp_config()
+        assert forecast_config.server_name == "forecast"
+        assert forecast_config.tool_name == "forecast_get_weather_forecast"
+        assert forecast_config.server_definition.connection_type == "http"
     
-    def test_react_agent_can_select_mcp_tools(self):
-        """Test that React agent can select MCP tools from registry."""
-        registry = create_tool_set_registry("agriculture", mock_results=True)
-        
-        # Get all tool names
-        tool_names = registry.get_tool_names()
-        
-        # Both tool types should be available for selection
-        assert "get_weather_forecast" in tool_names
-        assert "get_weather_forecast_mcp" in tool_names
-        
-        # React agent should be able to choose based on tool descriptions
-        traditional_tool = registry.get_tool("get_weather_forecast")
-        mcp_tool = registry.get_tool("get_weather_forecast_mcp")
-        
-        # Descriptions should be different to help agent choose
-        assert "mcp" not in traditional_tool.description.lower()
-        assert "mcp" in mcp_tool.description.lower()
-    
-    def test_tool_registry_clear_includes_mcp_tools(self):
-        """Test that clearing registry removes all tools including MCP."""
+    def test_tool_registry_clear_removes_all_tools(self):
+        """Test that clearing registry removes all consolidated tools."""
         registry = create_tool_set_registry("agriculture", mock_results=True)
         
         # Verify tools are registered
-        assert len(registry.get_all_tools()) == 6
+        assert len(registry.get_all_tools()) == 3
         
         # Clear registry
         registry.clear()
@@ -100,4 +85,25 @@ class TestToolRegistryMCPIntegration:
         # Verify all tools are removed
         assert len(registry.get_all_tools()) == 0
         assert registry.get_tool("get_weather_forecast") is None
-        assert registry.get_tool("get_weather_forecast_mcp") is None
+        assert registry.get_tool("get_historical_weather") is None
+        assert registry.get_tool("get_agricultural_conditions") is None
+    
+    def test_mock_mode_affects_tool_execution(self):
+        """Test that mock mode affects tool execution behavior."""
+        # Create registry with mock enabled
+        mock_registry = create_tool_set_registry("agriculture", mock_results=True)
+        forecast_mock = mock_registry.get_tool("get_weather_forecast")
+        
+        # Mock mode should allow execute() to return mock data
+        result = forecast_mock.execute(latitude=40.7, longitude=-74.0, days=3)
+        assert "Weather Forecast" in result
+        assert "40.7" in result
+        
+        # Create registry with mock disabled
+        real_registry = create_tool_set_registry("agriculture", mock_results=False)
+        forecast_real = real_registry.get_tool("get_weather_forecast")
+        
+        # Non-mock mode should raise RuntimeError
+        with pytest.raises(RuntimeError) as exc_info:
+            forecast_real.execute(latitude=40.7, longitude=-74.0, days=3)
+        assert "MCP tools should be executed via activity" in str(exc_info.value)

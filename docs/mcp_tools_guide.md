@@ -11,17 +11,22 @@ MCP (Model Context Protocol) tools allow the agentic workflow to execute tools v
 - **Better Scalability**: Tool execution can be scaled independently
 - **Fault Isolation**: Tool failures don't crash the worker process
 
+**IMPORTANT**: All weather/agriculture tools are now consolidated as MCP-enabled tools. There are no separate `_mcp` tools anymore.
+
 ## Architecture
 
 ```mermaid
 flowchart TD
     A[React Agent] --> B[Tool Registry]
-    B --> C{Tool Type?}
-    C -->|Traditional| D[ToolExecutionActivity]
-    C -->|MCP| E[MCPExecutionActivity]
-    E --> F[MCP Client Manager]
-    F --> G[MCP Server]
-    D --> H[Local Execute]
+    B --> C[ToolExecutionActivity]
+    C --> D{is_mcp?}
+    D -->|True| E[MCP Client Manager]
+    D -->|False| F[Local Execute]
+    E --> G[MCP Server]
+    G --> H[Dynamic Tool Name]
+    H --> I{MCP_USE_PROXY?}
+    I -->|True| J[Prefixed Name]
+    I -->|False| K[Unprefixed Name]
 ```
 
 ## Creating an MCP Tool
@@ -31,56 +36,56 @@ flowchart TD
 ```python
 from typing import ClassVar, Type
 from pydantic import BaseModel
-from models.tool_definitions import MCPServerDefinition
 from shared.tool_utils.mcp_tool import MCPTool
 
-class MyMCPTool(MCPTool):
+class MyTool(MCPTool):
     """Tool description for the agent."""
     
     # Required class variables
-    NAME: ClassVar[str] = "my_tool_mcp"  # Must end with _mcp
-    MODULE: ClassVar[str] = "tools.my_category.my_tool_mcp"
+    NAME: ClassVar[str] = "my_tool"  # No _mcp suffix needed
+    MODULE: ClassVar[str] = "tools.my_category.my_tool"
+    is_mcp: ClassVar[bool] = True  # Identifies this as an MCP tool
     
     # Tool metadata
-    description: str = "What this tool does (mention MCP for clarity)"
-    args_model: Type[BaseModel] = MyToolArgs  # Reuse from traditional tool
+    description: str = "What this tool does"
+    args_model: Type[BaseModel] = MyToolArgs
     
     # MCP configuration
     mcp_server_name: str = "my_server"  # Server namespace
-    mcp_tool_name: str = "server_tool_name"  # Tool name on server
-    mcp_server_definition: MCPServerDefinition = MCPServerDefinition(
-        name="my-mcp-server",
-        connection_type="http",
-        url="http://my-server:8000/mcp"
-    )
+    # Note: mcp_tool_name removed - computed dynamically based on MCP_USE_PROXY
+    
+    # get_mcp_config() is inherited from MCPTool base class
 ```
 
-### 2. Naming Convention
+**IMPORTANT**: Tool names are now computed dynamically:
+- When `MCP_USE_PROXY=true` (default): `my_server_my_tool`
+- When `MCP_USE_PROXY=false`: `my_tool`
 
-MCP tools MUST follow the naming convention of ending with `_mcp`. This is how the workflow routes tools to the correct execution activity.
+### 2. Tool Identification
 
-- ✅ `get_weather_forecast_mcp`
-- ✅ `analyze_data_mcp`
-- ❌ `get_weather_forecast_via_mcp`
-- ❌ `mcp_get_weather`
+MCP tools are identified by the `is_mcp` class variable, not by naming convention:
+
+- Tools extending `MCPTool` automatically have `is_mcp = True`
+- Tool names should be descriptive without special suffixes
+- Examples: `get_weather_forecast`, `get_historical_weather`, `get_agricultural_conditions`
 
 ### 3. Reuse Argument Models
 
 MCP tools should reuse the same argument models as their traditional counterparts:
 
 ```python
-# In traditional tool
+# Reuse argument models for consistency
 from .weather_forecast import ForecastRequest
 
-class WeatherForecastMCPTool(MCPTool):
-    args_model: Type[BaseModel] = ForecastRequest  # Reuse!
+class WeatherForecastTool(MCPTool):
+    args_model: Type[BaseModel] = ForecastRequest  # Same args as before
 ```
 
-This ensures consistency and allows tools to be swapped without changing the agent's behavior.
+This ensures consistency when migrating from traditional to MCP tools.
 
 ## Registering MCP Tools
 
-Add MCP tools to your tool set alongside traditional tools:
+Register MCP tools in your tool set - they work alongside any traditional tools:
 
 ```python
 class MyToolSet(ToolSet):
@@ -88,18 +93,18 @@ class MyToolSet(ToolSet):
         super().__init__(
             config=ToolSetConfig(
                 name=self.NAME,
-                description="My tools (with MCP support)",
+                description="My tools",
                 tool_classes=[
-                    # Traditional tools
-                    TraditionalTool1,
-                    TraditionalTool2,
-                    # MCP tools
-                    Tool1MCPTool,
-                    Tool2MCPTool,
+                    # All tools registered the same way
+                    WeatherForecastTool,      # MCP tool (is_mcp=True)
+                    HistoricalWeatherTool,    # MCP tool (is_mcp=True)
+                    SomeTraditionalTool,      # Traditional tool (is_mcp=False)
                 ],
             )
         )
 ```
+
+The workflow automatically routes based on the `is_mcp` class variable.
 
 ## Mock Mode
 
@@ -137,10 +142,10 @@ async def my_tool(request: MyRequest) -> dict:
 
 ```python
 def test_mcp_tool_creation():
-    tool = MyMCPTool()
+    tool = MyTool()
     
-    assert tool.NAME == "my_tool_mcp"
-    assert tool.uses_mcp is True
+    assert tool.NAME == "my_tool"
+    assert tool.__class__.is_mcp is True
     assert tool.mcp_server_name == "my_server"
     
     # Test execute raises error
@@ -160,59 +165,59 @@ async def test_mcp_tool_integration():
 
 ## Workflow Routing
 
-The workflow automatically routes tools based on naming:
+The workflow uses a unified `ToolExecutionActivity` that handles both traditional and MCP tools:
 
 ```python
-# In agentic_ai_workflow.py
-if tool_name.endswith('_mcp'):
-    # Route to MCPExecutionActivity
-    result = await workflow.execute_activity(
-        MCPExecutionActivity.execute_mcp_tool,
-        request,
-        start_to_close_timeout=timedelta(seconds=300),
+# In ToolExecutionActivity
+tool = tool_registry.get_tool(tool_name)
+tool_class = tool.__class__
+
+# Check if this is an MCP tool using the class variable
+if getattr(tool_class, 'is_mcp', False):
+    # Execute as MCP tool
+    mcp_config = tool.get_mcp_config()
+    client = await self.mcp_client_manager.get_client(mcp_config.server_definition)
+    result = await client.call_tool(
+        name=mcp_config.tool_name,  # Dynamically computed based on MCP_USE_PROXY
+        arguments=wrapped_args
     )
 else:
-    # Route to ToolExecutionActivity
-    result = await workflow.execute_activity(
-        ToolExecutionActivity.execute_tool,
-        request,
-        start_to_close_timeout=timedelta(seconds=30),
-    )
+    # Execute as traditional tool
+    result = tool.execute(**tool_args)
 ```
 
 ## Best Practices
 
-1. **Always End Names with _mcp**: This ensures proper routing
-2. **Reuse Argument Models**: Maintain consistency with traditional tools
-3. **Support Mock Mode**: All servers should check `TOOLS_MOCK`
-4. **Clear Descriptions**: Mention "MCP" in tool descriptions
+1. **Use MCPTool Base Class**: Inherit from `MCPTool` for automatic MCP handling
+2. **Reuse Argument Models**: Maintain consistency across tool implementations
+3. **Support Mock Mode**: All servers should check `TOOLS_MOCK` environment variable
+4. **Dynamic Tool Names**: Understand that tool names change based on `MCP_USE_PROXY`
 5. **Proper Timeouts**: MCP tools may need longer timeouts for network calls
 6. **Error Handling**: MCP servers should return structured error responses
+7. **Environment Configuration**: Use `MCP_URL` and `MCP_USE_PROXY` for deployment flexibility
 
-## Example: Weather Forecast MCP Tool
+## Example: Weather Forecast Tool
 
 ```python
-class WeatherForecastMCPTool(MCPTool):
-    """Weather forecast tool that uses MCP backend service."""
+class WeatherForecastTool(MCPTool):
+    """Get weather forecast for a location including temperature, precipitation, 
+    wind, and other meteorological conditions."""
     
-    NAME: ClassVar[str] = "get_weather_forecast_mcp"
-    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast_mcp"
+    NAME: ClassVar[str] = "get_weather_forecast"
+    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast"
+    is_mcp: ClassVar[bool] = True
     
     description: str = (
-        "Get weather forecast for a location using MCP service. "
-        "Includes temperature, precipitation, wind, and other "
-        "meteorological conditions from the weather proxy."
+        "Get weather forecast for a location including temperature, precipitation, "
+        "wind, and other meteorological conditions"
     )
     args_model: Type[BaseModel] = ForecastRequest
     
     # MCP configuration
     mcp_server_name: str = "forecast"
-    mcp_tool_name: str = "forecast_get_weather_forecast"
-    mcp_server_definition: MCPServerDefinition = MCPServerDefinition(
-        name="weather-proxy",
-        connection_type="http",
-        url="http://weather-proxy:8000/mcp"
-    )
+    # Note: Tool name is computed dynamically:
+    # - Proxy mode (MCP_USE_PROXY=true): "forecast_get_weather_forecast"
+    # - Direct mode (MCP_USE_PROXY=false): "get_weather_forecast"
 ```
 
 ## Troubleshooting
@@ -221,14 +226,23 @@ class WeatherForecastMCPTool(MCPTool):
 
 If the agent can't find your MCP tool:
 1. Check it's registered in the tool set
-2. Verify the NAME ends with `_mcp`
+2. Verify the tool class extends `MCPTool`
 3. Ensure the tool class is imported correctly
+4. Check if `MCP_USE_PROXY` setting matches your deployment
+
+### Tool Name Mismatch Errors
+
+If you see "Unknown tool" errors:
+1. Check `MCP_USE_PROXY` environment variable
+2. Proxy mode expects prefixed names (e.g., `forecast_get_weather_forecast`)
+3. Direct mode expects unprefixed names (e.g., `get_weather_forecast`)
+4. Ensure MCP server implements the expected tool name
 
 ### Connection Errors
 
 If MCP execution fails:
 1. Verify the MCP server is running
-2. Check the server URL in MCPServerDefinition
+2. Check `MCP_URL` environment variable
 3. Ensure Docker networking allows connection
 4. Check server logs for errors
 

@@ -272,31 +272,32 @@ The `SimpleAgentWorkflow` acts as a router for different reasoning patterns:
 
 When working with MCP (Model Context Protocol) tools:
 
-1. **Naming Convention**: MCP tools MUST end with `_mcp` suffix for proper workflow routing
+1. **Consolidated Tools**: All weather/agriculture tools are now MCP-enabled (no separate `_mcp` tools)
 2. **Inheritance**: MCP tools extend `MCPTool` base class, not `BaseTool` directly
-3. **Argument Reuse**: Always reuse argument models from traditional tools for consistency
-4. **Mock Mode**: All MCP servers support `TOOLS_MOCK=true` environment variable
-5. **Registration**: MCP tools are registered alongside traditional tools in tool sets
-6. **Routing**: Workflow automatically routes to `MCPExecutionActivity` based on `_mcp` suffix
-7. **No Direct Execution**: MCP tools raise `RuntimeError` if `execute()` is called directly
+3. **Identification**: Tools are identified as MCP via `is_mcp: ClassVar[bool] = True`
+4. **Dynamic Tool Names**: Tool names are computed dynamically based on `MCP_USE_PROXY`:
+   - When `MCP_USE_PROXY=true` (default): Names are prefixed (e.g., `forecast_get_weather_forecast`)
+   - When `MCP_USE_PROXY=false`: Names are unprefixed (e.g., `get_weather_forecast`)
+5. **Mock Mode**: All MCP tools support `TOOLS_MOCK=true` environment variable
+6. **Registration**: MCP tools are registered without `_mcp` suffix
+7. **Routing**: Workflow routes to `ToolExecutionActivity` which handles MCP tools based on `is_mcp`
+8. **No Direct Execution**: MCP tools raise `RuntimeError` if `execute()` is called directly
 
 Example MCP tool structure:
 ```python
-class WeatherForecastMCPTool(MCPTool):
-    NAME: ClassVar[str] = "get_weather_forecast_mcp"  # Must end with _mcp
-    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast_mcp"
+class WeatherForecastTool(MCPTool):
+    NAME: ClassVar[str] = "get_weather_forecast"  # No _mcp suffix
+    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast"
+    is_mcp: ClassVar[bool] = True  # Identifies this as an MCP tool
     
     description: str = "Get weather forecast via MCP service"
-    args_model: Type[BaseModel] = ForecastRequest  # Reuse from traditional tool
+    args_model: Type[BaseModel] = ForecastRequest
     
     # MCP configuration
     mcp_server_name: str = "forecast"
-    mcp_tool_name: str = "forecast_get_weather_forecast"
-    mcp_server_definition: MCPServerDefinition = MCPServerDefinition(
-        name="weather-proxy",
-        connection_type="http",
-        url="http://weather-proxy:8000/mcp"
-    )
+    # Note: mcp_tool_name removed - computed dynamically in get_mcp_config()
+    
+    # get_mcp_config() inherited from MCPTool base class
 ```
 
 

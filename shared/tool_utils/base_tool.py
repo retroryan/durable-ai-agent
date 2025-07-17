@@ -47,6 +47,9 @@ class BaseTool(BaseModel, ABC):
     MODULE: ClassVar[
         str
     ]  # The module/category the tool belongs to (e.g., "ecommerce", "productivity")
+    
+    # Class-level indicator for MCP vs traditional tools
+    is_mcp: ClassVar[bool] = False  # Default for all traditional tools
 
     # Instance fields that define the tool's characteristics
     description: str = Field(
@@ -62,9 +65,6 @@ class BaseTool(BaseModel, ABC):
     
     # Configuration for mock behavior (default True to maintain current behavior)
     mock_results: bool = Field(default=True, exclude=True)
-    
-    # Optional MCP configuration fields (for compatibility with MCPTool)
-    uses_mcp: bool = Field(default=False, exclude=True)
 
     def __init_subclass__(cls, **kwargs):
         """

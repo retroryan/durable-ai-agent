@@ -1,29 +1,38 @@
+import os
 from datetime import datetime, timedelta
 from typing import ClassVar, Optional, Type
 
 import requests
 from pydantic import BaseModel, Field, field_validator
 
-from shared.tool_utils.base_tool import BaseTool
+from models.types import MCPConfig
+from models.tool_definitions import MCPServerDefinition
+from shared.tool_utils.mcp_tool import MCPTool
 
 
 class HistoricalRequest(BaseModel):
-    latitude: float = Field(
+    location: Optional[str] = Field(
+        None,
+        description="Location name (e.g., 'Chicago, IL'). Slower due to geocoding.",
+    )
+    latitude: Optional[float] = Field(
+        None,
         ge=-90,
         le=90,
-        description="REQUIRED: Latitude coordinate (-90 to 90) - extract from location names",
+        description="Direct latitude (-90 to 90). PREFERRED for faster response."
     )
-    longitude: float = Field(
+    longitude: Optional[float] = Field(
+        None,
         ge=-180,
         le=180,
-        description="REQUIRED: Longitude coordinate (-180 to 180) - extract from location names",
+        description="Direct longitude (-180 to 180). PREFERRED for faster response."
     )
     start_date: str = Field(..., description="Start date in YYYY-MM-DD format")
     end_date: str = Field(..., description="End date in YYYY-MM-DD format")
 
     @field_validator("latitude", "longitude", mode="before")
     def convert_to_float(cls, v):
-        if isinstance(v, str):
+        if v is not None and isinstance(v, str):
             v = v.strip(" \"' ")
             try:
                 return float(v)
@@ -57,173 +66,111 @@ class HistoricalRequest(BaseModel):
         return v
 
 
-class HistoricalWeatherTool(BaseTool):
+class HistoricalWeatherTool(MCPTool):
     NAME: ClassVar[str] = "get_historical_weather"
     MODULE: ClassVar[str] = "tools.precision_agriculture.historical_weather"
+    is_mcp: ClassVar[bool] = True
 
     description: str = (
-        "Get historical weather data for a location and date range. "
-        "Only works for dates at least 5 days in the past."
+        "Get historical weather data for a location. Retrieves past temperature, "
+        "precipitation, and weather conditions for any date range at least 5 days ago."
     )
     args_model: Type[BaseModel] = HistoricalRequest
 
-    def _mock_results(self, latitude: float, longitude: float, start_date: str, end_date: str) -> str:
+    # MCP configuration
+    # mcp_server_name identifies which MCP server this tool connects to
+    # This is used to construct the prefixed tool name when using the proxy
+    mcp_server_name: str = "historical"
+    
+    # Note: get_mcp_config() is inherited from MCPTool base class
+    # It handles dynamic tool name resolution based on MCP_USE_PROXY
+
+    def execute(
+        self,
+        location: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        start_date: str = None,
+        end_date: str = None,
+    ) -> str:
+        # Only used in mock mode for testing
+        if self.mock_results:
+            # For mock results, prefer coordinates if available
+            if latitude is not None and longitude is not None:
+                return self._mock_results(latitude, longitude, start_date, end_date)
+            elif location:
+                # Mock geocoding for common locations
+                coords = self._mock_geocode(location)
+                return self._mock_results(coords[0], coords[1], start_date, end_date)
+            else:
+                raise ValueError("Either location or coordinates required")
+        else:
+            # Real execution happens via MCP in ToolExecutionActivity
+            raise RuntimeError("MCP tools should be executed via activity")
+    
+    def _mock_geocode(self, location: str) -> tuple[float, float]:
+        """Mock geocoding for common locations."""
+        mock_coords = {
+            "new york": (40.7128, -74.0060),
+            "chicago": (41.8781, -87.6298),
+            "los angeles": (34.0522, -118.2437),
+            "sydney": (-33.8688, 151.2093),
+            "melbourne": (-37.8136, 144.9631),
+        }
+        location_lower = location.lower()
+        for key, coords in mock_coords.items():
+            if key in location_lower:
+                return coords
+        # Default to NYC if not found
+        return (40.7128, -74.0060)
+
+    def _mock_results(
+        self,
+        latitude: float,
+        longitude: float,
+        start_date: str,
+        end_date: str,
+    ) -> str:
         """Return simple mock historical weather data."""
         return f"""Historical Weather Data for {latitude:.4f}, {longitude:.4f}
 Location: Location at {latitude:.4f}, {longitude:.4f}
 Period: {start_date} to {end_date}
 
-Daily Historical Summary:
+Daily Summary:
+- 2025-01-01: High 18°C, Low 10°C, Precipitation 2.5mm
+- 2025-01-02: High 20°C, Low 12°C, Precipitation 0mm
+- 2025-01-03: High 22°C, Low 14°C, Precipitation 0.8mm
 
-{start_date}:
-- Temperature: High 22°C, Low 15°C
-- Precipitation: 2.5mm
-- Max Wind Speed: 15 km/h
-- Max UV Index: 6
-
-Period Summary:
-- Average High: 22.0°C
-- Average Low: 15.0°C
-- Total Precipitation: 2.5mm"""
-
-    def _real_call(self, latitude: float, longitude: float, start_date: str, end_date: str) -> str:
-        """Make real API call to get historical weather data."""
-        try:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-
-            min_historical_date = datetime.now() - timedelta(days=5)
-            if end_dt > min_historical_date:
-                return f"Error: Historical data only available for dates at least 5 days in the past. Latest available date: {min_historical_date.strftime('%Y-%m-%d')}"
-
-            location_name = f"Location at {latitude:.4f}, {longitude:.4f}"
-
-            # Call Open-Meteo Archive API
-            params = {
-                "latitude": latitude,
-                "longitude": longitude,
-                "start_date": start_date,
-                "end_date": end_date,
-                "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,rain_sum,snowfall_sum,precipitation_hours,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max",
-                "timezone": "auto",
-            }
-
-            response = requests.get(
-                "https://archive-api.open-meteo.com/v1/archive",
-                params=params,
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            # Format the response as a readable string
-            daily = data.get("daily", {})
-
-            # Build formatted output
-            output = f"""Historical Weather Data for {latitude:.4f}, {longitude:.4f}
-Location: {location_name}
-Period: {start_date} to {end_date}
-
-Daily Historical Summary:"""
-
-            # Add daily historical data
-            if daily and "time" in daily:
-                for i in range(len(daily.get("time", []))):
-                    date = daily["time"][i]
-                    temp_max = (
-                        daily.get("temperature_2m_max", [])[i]
-                        if i < len(daily.get("temperature_2m_max", []))
-                        else "N/A"
-                    )
-                    temp_min = (
-                        daily.get("temperature_2m_min", [])[i]
-                        if i < len(daily.get("temperature_2m_min", []))
-                        else "N/A"
-                    )
-                    precip = (
-                        daily.get("precipitation_sum", [])[i]
-                        if i < len(daily.get("precipitation_sum", []))
-                        else "N/A"
-                    )
-                    wind_max = (
-                        daily.get("wind_speed_10m_max", [])[i]
-                        if i < len(daily.get("wind_speed_10m_max", []))
-                        else "N/A"
-                    )
-                    uv_max = (
-                        daily.get("uv_index_max", [])[i]
-                        if i < len(daily.get("uv_index_max", []))
-                        else "N/A"
-                    )
-
-                    output += f"\n\n{date}:"
-                    output += f"\n- Temperature: High {temp_max}°C, Low {temp_min}°C"
-                    output += f"\n- Precipitation: {precip}mm"
-                    output += f"\n- Max Wind Speed: {wind_max} km/h"
-                    output += f"\n- Max UV Index: {uv_max}"
-
-            # Add summary statistics
-            if daily:
-                temp_maxes = [
-                    t for t in daily.get("temperature_2m_max", []) if t is not None
-                ]
-                temp_mins = [
-                    t for t in daily.get("temperature_2m_min", []) if t is not None
-                ]
-                precips = [
-                    p for p in daily.get("precipitation_sum", []) if p is not None
-                ]
-
-                if temp_maxes and temp_mins and precips:
-                    output += f"\n\nPeriod Summary:"
-                    output += (
-                        f"\n- Average High: {sum(temp_maxes)/len(temp_maxes):.1f}°C"
-                    )
-                    output += f"\n- Average Low: {sum(temp_mins)/len(temp_mins):.1f}°C"
-                    output += f"\n- Total Precipitation: {sum(precips):.1f}mm"
-
-            return output
-
-        except Exception as e:
-            return f"Error retrieving historical weather: {str(e)}"
-
-    def execute(
-        self, latitude: float, longitude: float, start_date: str, end_date: str
-    ) -> str:
-        if self.mock_results:
-            return self._mock_results(latitude, longitude, start_date, end_date)
-        else:
-            return self._real_call(latitude, longitude, start_date, end_date)
+Average Conditions:
+- Temperature: 15.3°C
+- Precipitation: 1.1mm/day
+- Humidity: 68%"""
 
     def get_test_cases(self) -> list[dict]:
-        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        two_weeks_ago = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
-
         return [
             {
-                "description": "Get historical weather for a week by location",
+                "description": "Get historical weather for last week",
                 "inputs": {
-                    "location": "San Francisco, CA",
-                    "start_date": month_ago,
-                    "end_date": week_ago,
+                    "location": "Chicago, IL",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-07",
                 },
             },
             {
                 "description": "Get historical weather by coordinates",
                 "inputs": {
-                    "latitude": 48.8566,
-                    "longitude": 2.3522,
-                    "start_date": two_weeks_ago,
-                    "end_date": week_ago,
+                    "latitude": 41.8781,
+                    "longitude": -87.6298,
+                    "start_date": "2024-12-25",
+                    "end_date": "2024-12-31",
                 },
             },
             {
                 "description": "Get single day historical weather",
                 "inputs": {
-                    "location": "Tokyo, Japan",
-                    "start_date": week_ago,
-                    "end_date": week_ago,
+                    "location": "Denver, CO",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-01",
                 },
             },
         ]

@@ -1,9 +1,11 @@
 """Tests for MCPTool base class."""
-from typing import Type
+from typing import ClassVar, Type
+from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel, Field
 
+from models.types import MCPConfig
 from models.tool_definitions import MCPServerDefinition
 from shared.tool_utils.mcp_tool import MCPTool
 
@@ -14,17 +16,17 @@ class TestArguments(BaseModel):
     count: int = Field(default=1, description="Number of times")
 
 
-class TestMCPTool(MCPTool):
+class SampleMCPTool(MCPTool):
     """Test MCP tool implementation."""
     
-    NAME = "test_mcp_tool"
-    MODULE = "test.tools.test_mcp"
+    NAME: ClassVar[str] = "test_mcp_tool"
+    MODULE: ClassVar[str] = "test.tools.test_mcp"
     
     description: str = "Test MCP tool"
     args_model: Type[BaseModel] = TestArguments
     
     mcp_server_name: str = "test_server"
-    mcp_tool_name: str = "test_tool"
+    # Note: mcp_tool_name has been removed - tool names are now computed dynamically
     mcp_server_definition: MCPServerDefinition = MCPServerDefinition(
         name="test-server",
         connection_type="http",
@@ -37,42 +39,60 @@ class TestMCPToolClass:
     
     def test_mcp_tool_creation(self):
         """Test that MCP tools can be created with required fields."""
-        tool = TestMCPTool()
+        tool = SampleMCPTool()
         
         assert tool.NAME == "test_mcp_tool"
         assert tool.MODULE == "test.tools.test_mcp"
         assert tool.description == "Test MCP tool"
-        assert tool.uses_mcp is True
+        assert tool.__class__.is_mcp is True  # Check class variable
         assert tool.mcp_server_name == "test_server"
-        assert tool.mcp_tool_name == "test_tool"
+        # Note: mcp_tool_name has been removed - tool names are now computed dynamically
         assert tool.mcp_server_definition.name == "test-server"
         assert tool.mcp_server_definition.connection_type == "http"
         assert tool.mcp_server_definition.url == "http://localhost:8000/mcp"
     
-    def test_get_mcp_config(self):
-        """Test get_mcp_config returns correct configuration."""
-        tool = TestMCPTool()
+    @patch.dict("os.environ", {"MCP_USE_PROXY": "true"})
+    def test_get_mcp_config_proxy_mode(self):
+        """Test get_mcp_config returns correct configuration in proxy mode."""
+        tool = SampleMCPTool()
         config = tool.get_mcp_config()
         
-        assert config["server_name"] == "test_server"
-        assert config["tool_name"] == "test_tool"
-        assert config["server_definition"].name == "test-server"
-        assert config["server_definition"].connection_type == "http"
-        assert config["server_definition"].url == "http://localhost:8000/mcp"
+        assert isinstance(config, MCPConfig)
+        assert config.server_name == "test_server"
+        # In proxy mode, tool name should be prefixed
+        assert config.tool_name == "test_server_test_mcp_tool"
+        assert config.server_definition.name == "mcp-test_server"
+        assert config.server_definition.connection_type == "http"
+        # Should use default proxy URL from environment
+        assert config.server_definition.url == "http://weather-proxy:8000/mcp"
+    
+    @patch.dict("os.environ", {"MCP_USE_PROXY": "false", "MCP_URL": "http://test-server:8000/mcp"})
+    def test_get_mcp_config_direct_mode(self):
+        """Test get_mcp_config returns correct configuration in direct mode."""
+        tool = SampleMCPTool()
+        config = tool.get_mcp_config()
+        
+        assert isinstance(config, MCPConfig)
+        assert config.server_name == "test_server"
+        # In direct mode, tool name should NOT be prefixed
+        assert config.tool_name == "test_mcp_tool"
+        assert config.server_definition.name == "mcp-test_server"
+        assert config.server_definition.connection_type == "http"
+        assert config.server_definition.url == "http://test-server:8000/mcp"
     
     def test_execute_raises_error(self):
         """Test that execute method raises RuntimeError for MCP tools."""
-        tool = TestMCPTool()
+        tool = SampleMCPTool()
         
         with pytest.raises(RuntimeError) as exc_info:
             tool.execute(message="test", count=5)
         
         assert "test_mcp_tool" in str(exc_info.value)
-        assert "MCPExecutionActivity" in str(exc_info.value)
+        assert "should be executed via activity" in str(exc_info.value)
     
     def test_arguments_extracted_from_model(self):
         """Test that arguments are properly extracted from args_model."""
-        tool = TestMCPTool()
+        tool = SampleMCPTool()
         
         args = tool.get_argument_list()
         assert "message" in args
@@ -91,10 +111,22 @@ class TestMCPToolClass:
     
     def test_validate_and_execute_raises_error(self):
         """Test that validate_and_execute also raises RuntimeError."""
-        tool = TestMCPTool()
+        tool = SampleMCPTool()
         
         with pytest.raises(RuntimeError) as exc_info:
             tool.validate_and_execute(message="test", count=3)
         
         assert "test_mcp_tool" in str(exc_info.value)
-        assert "MCPExecutionActivity" in str(exc_info.value)
+        assert "should be executed via activity" in str(exc_info.value)
+    
+    def test_is_mcp_class_variable(self):
+        """Test that is_mcp is properly set as a class variable."""
+        # Check the class itself
+        assert SampleMCPTool.is_mcp is True
+        
+        # Check instance access
+        tool = SampleMCPTool()
+        assert tool.__class__.is_mcp is True
+        
+        # Verify it's not an instance attribute
+        assert 'is_mcp' not in tool.__dict__
