@@ -18,41 +18,32 @@ This creates real problems:
 
 **Reliability gaps**: Mid-task failures leave incomplete results, limiting use for critical operations
 
-## The Solution: Durable AI Architecture
-
-We solve this by integrating three cutting-edge technologies:
-
-**Temporal's Durable Execution**: Workflows that maintain state across failures, activities that isolate external interactions, and stateless workers that scale infinitely.
-
-**DSPy's Context Engineering**: Structured, type-safe reasoning with declarative signatures—moving beyond brittle prompt engineering to predictable agent logic.
-
-**MCP Integration**: Seamless tool orchestration with built-in support for weather forecasting, historical data, and agricultural analysis.
-
 ## Core Architecture: Durable Agentic Loop
 
-Our architecture separates thinking from acting:
+We solve this by integrating three cutting-edge technologies to create a resilient architecture that separates thinking from acting:
 
-**Thinking (DSPy)**: The agent reasons through problems using structured modules
+**Technologies**:
 
-**Acting (Temporal Activities)**: Tool execution is isolated and independently durable
+* **Temporal's Durable Execution**: Workflows that maintain state across failures with stateless workers that scale infinitely
 
-**Orchestration (Temporal Workflows)**: The overall process is checkpointed and resumable
+* **DSPy's Context Engineering**: Structured, type-safe reasoning with declarative signatures—moving beyond brittle prompt engineering
 
-This separation ensures transparency, debuggability, and resilience to transient failures at any layer.
+* **MCP Integration**: Seamless tool orchestration with built-in support for weather forecasting, historical data, and agricultural analysis
 
-## Production-Ready Features
+**Architecture**:
 
-Building on Temporal provides enterprise-grade capabilities out of the box:
+* **Thinking (DSPy)**: The agent reasons through problems using structured modules
 
-**Long-Running Operations**: Agents can pause, resume, and continue over days or months
+* **Acting (Temporal Activities)**: Tool execution is isolated and independently durable
 
-**Automatic Recovery**: State persists through crashes, restarts, and infrastructure failures
+* **Orchestration (Temporal Workflows)**: The overall process is checkpointed and resumable
 
-**Tool Isolation**: External API calls are wrapped with retries, timeouts, and circuit breakers
+This separation ensures transparency, traceability, and resilience to transient failures at any layer.
 
-**Horizontal Scaling**: Stateless workers scale to meet demand automatically
+## Deep Dive Articles
 
-**Full Observability**: Every decision, action, and state transition is recorded and queryable
+- [Building AI Agents with React: Why the Agentic Loop Breaks in Production](https://medium.com/@ryan_53117/building-ai-agents-with-react-why-the-agentic-loop-breaks-in-production-7443a4529909)
+- [Building Reliable AI Agents: The Architecture of Durable Intelligence](https://medium.com/@ryan_53117/building-reliable-ai-agents-the-architecture-of-durable-intelligence-f9b43e45646c)
 
 ## Quick Start
 
@@ -119,14 +110,6 @@ flowchart TD
     %% Color Group 4: F,K
     style F fill:#fff3e0
     style K fill:#fff3e0
-    
-    %% Legend
-    subgraph Legend
-        L1[#e8f5e9 - ]
-        L2[#e1f5fe - ]
-        L3[#f3e5f5 - ]
-        L4[#fff3e0 - ]
-    end
 ```
 
 ### Execution Flow
