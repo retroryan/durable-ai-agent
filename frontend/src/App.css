@@ -1,13 +1,11 @@
-/* Minimal CSS for Durable AI Agent */
-
-.app {
+/* Main Application Layout */
+.app-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Header */
 .app-header {
   background-color: #2c3e50;
   color: white;
@@ -16,40 +14,141 @@
 }
 
 .app-header h1 {
-  margin: 0;
+  margin: 0 0 1rem 0;
   font-size: 1.5rem;
 }
 
+/* Tab Navigation */
+.tab-navigation {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tab {
+  background: none;
+  border: none;
+  color: #ecf0f1;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.tab:hover {
+  background-color: #34495e;
+}
+
+.tab.active {
+  background-color: #ecf0f1;
+  color: #2c3e50;
+}
+
+.running-indicator {
+  color: #2ecc71;
+  margin-left: 0.5rem;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Action Buttons */
+.action-button {
+  margin-left: auto;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.start-monty {
+  background-color: #3498db;
+  color: white;
+}
+
+.start-monty:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+.start-monty:disabled {
+  background-color: #95a5a6;
+  cursor: not-allowed;
+}
+
+.stop-monty {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.stop-monty:hover {
+  background-color: #c0392b;
+}
+
+.clear-trace {
+  background-color: #95a5a6;
+  color: white;
+  margin-left: 0.5rem;
+}
+
+.clear-trace:hover {
+  background-color: #7f8c8d;
+}
+
+/* Main Content Area */
+.app-content {
+  flex: 1;
+  overflow: hidden;
+  background-color: #ecf0f1;
+}
+
+/* Status Bar */
+.status-bar {
+  background-color: #3498db;
+  color: white;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+/* Chat View */
+.chat-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.chat-header {
+  margin-bottom: 1rem;
+}
+
 .user-info {
-  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
   font-size: 0.875rem;
-  opacity: 0.9;
+  color: #2c3e50;
 }
 
 .user-name {
-  color: #4ecdc4;
+  color: #3498db;
   font-weight: 500;
 }
 
 .workflow-info {
-  margin-top: 0.5rem;
   font-size: 0.875rem;
-  opacity: 0.8;
+  color: #7f8c8d;
 }
 
 .workflow-id {
   margin-right: 1rem;
-}
-
-/* Main content */
-.app-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  max-width: 800px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 1rem;
 }
 
 /* Chat window */
@@ -130,7 +229,7 @@
   height: 8px;
   background-color: #007bff;
   border-radius: 50%;
-  animation: pulse 1.4s ease-in-out infinite;
+  animation: dot-pulse 1.4s ease-in-out infinite;
 }
 
 .dot:nth-child(2) {
@@ -141,7 +240,7 @@
   animation-delay: 0.4s;
 }
 
-@keyframes pulse {
+@keyframes dot-pulse {
   0%, 60%, 100% {
     opacity: 0.2;
     transform: scale(1);
@@ -228,4 +327,89 @@
 
 .reset-button:hover {
   background-color: #5a6268;
+}
+
+/* Workflow Trace View */
+.trace-view-container {
+  height: 100%;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.trace-empty {
+  text-align: center;
+  padding: 3rem;
+  color: #7f8c8d;
+}
+
+.trace-header {
+  background-color: white;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.trace-header .workflow-info div {
+  margin: 0.25rem 0;
+}
+
+.trace-events-container {
+  flex: 1;
+  background-color: white;
+  border-radius: 4px;
+  padding: 1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.trace-events-container h3 {
+  margin: 0 0 1rem 0;
+  color: #2c3e50;
+}
+
+.trace-events {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.9rem;
+}
+
+.trace-event {
+  padding: 0.5rem;
+  border-bottom: 1px solid #ecf0f1;
+  display: flex;
+  align-items: flex-start;
+}
+
+.trace-event:last-child {
+  border-bottom: none;
+}
+
+.trace-time {
+  color: #7f8c8d;
+  margin-right: 1rem;
+  min-width: 80px;
+}
+
+.trace-message {
+  flex: 1;
+  color: #2c3e50;
+}
+
+.trace-stats {
+  background-color: white;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-top: 1rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.trace-stats .separator {
+  margin: 0 1rem;
+  color: #bdc3c7;
 }

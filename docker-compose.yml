@@ -74,6 +74,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    profiles:
+      - api_server
 
   worker:
     build:
@@ -105,6 +107,8 @@ services:
       - api
     networks:
       - durable-network
+    profiles:
+      - api_server
 
   forecast-mcp:
     build:

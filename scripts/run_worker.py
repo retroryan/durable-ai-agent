@@ -11,6 +11,7 @@ from temporalio.worker import Worker
 from activities.tool_execution_activity import ToolExecutionActivity
 from activities.react_agent_activity import ReactAgentActivity
 from activities.extract_agent_activity import ExtractAgentActivity
+from activities.monty_python_quote_activity import get_random_monty_python_quote
 
 
 from activities.event_finder_activity import find_events_activity
@@ -22,6 +23,7 @@ from shared.llm_utils import LLMConfig, setup_llm
 from shared.logging_config import setup_file_logging
 from workflows.agentic_ai_workflow import AgenticAIWorkflow
 from workflows.simple_agent_workflow import SimpleAgentWorkflow
+from workflows.monty_python_workflow import MontyPythonWorkflow
 
 
 async def main():
@@ -105,12 +107,13 @@ async def main():
             worker = Worker(
                 client,
                 task_queue=TEMPORAL_TASK_QUEUE,
-                workflows=[AgenticAIWorkflow, SimpleAgentWorkflow],
+                workflows=[AgenticAIWorkflow, SimpleAgentWorkflow, MontyPythonWorkflow],
                 activities=[
                     react_agent_activity.run_react_agent,
                     extract_agent_activity.run_extract_agent,
                     tool_execution_activity.execute_tool,
                     find_events_activity,
+                    get_random_monty_python_quote,
                 ],
                 activity_executor=activity_executor,
             )

@@ -2,15 +2,18 @@
 import logging
 
 # Configure logging
+import asyncio
+import json
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from temporalio.client import Client
 
 from api.services.workflow_service import WorkflowService
@@ -23,11 +26,13 @@ from models.api_models import (
 from shared.config import get_settings
 
 # Create logs directory if it doesn't exist
-os.makedirs("/app/logs", exist_ok=True)
+# Use local logs directory when running outside Docker
+log_dir = "/app/logs" if os.path.exists("/app") else "./logs"
+os.makedirs(log_dir, exist_ok=True)
 
 # Generate timestamp for log filename
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = f"/app/logs/api_{timestamp}.log"
+log_filename = f"{log_dir}/api_{timestamp}.log"
 
 # Configure logging with both console and file handlers
 logging.basicConfig(
@@ -510,6 +515,49 @@ async def request_summary(workflow_id: str):
         )
     except Exception as e:
         logger.error(f"Error requesting summary for workflow_id: {workflow_id}, error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/monty/stream")
+async def monty_stream():
+    """Stream Monty Python workflow execution."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    from api.streaming import MontyPythonStreaming
+    
+    streaming_handler = MontyPythonStreaming(
+        client=workflow_service.client,
+        task_queue=workflow_service.task_queue
+    )
+    
+    return await streaming_handler.stream()
+
+
+@app.post("/workflow/{workflow_id}/signal/stop")
+async def signal_stop_workflow(workflow_id: str):
+    """Send stop signal to workflow."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        # Get workflow handle
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        
+        # Send stop signal
+        await handle.signal("stop_workflow")
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "signal sent",
+                "workflow_id": workflow_id,
+                "signal": "stop_workflow",
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error sending stop signal to workflow {workflow_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
