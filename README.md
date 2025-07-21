@@ -76,62 +76,26 @@ cp worker.env .worker.env
 
 ## Architecture
 
-### System Components
-
-```mermaid
-flowchart TD
-    A[API Server] --> C[Agentic AI Workflow<br/><b>Durable & Resumable</b><br/><i>Survives failures/restarts</i>]
-    C --> D[React Agent Activity<br/><b>Resilient & Retryable</b><br/><i>Auto-retry on LLM failures</i>]
-    D --> E[React Agent<br/><i>DSPy Reasoning</i>]
-    E --> F[LLM]
-    F --> G[Tool Execution Activity<br/><b>Fault-Tolerant</b><br/><i>Retries & circuit breakers</i>]
-    G --> H{Query Fully<br/>Answered?}
-    H -->|No| C
-    H -->|Yes| I[Extract Agent Activity<br/><b>Guaranteed Execution</b><br/><i>Never loses accumulated state</i>]
-    I --> J[Extract Agent<br/><i>DSPy Synthesis</i>]
-    J --> K[LLM Summary]
-    K --> L[User Response]
-    
-    %% Color Group 1: A
-    style A fill:#e8f5e9
-    
-    %% Color Group 2: C,D,G,I,L
-    style C fill:#e1f5fe
-    style D fill:#e1f5fe
-    style G fill:#e1f5fe
-    style I fill:#e1f5fe
-    style L fill:#e1f5fe
-    
-    %% Color Group 3: E,H,J
-    style E fill:#f3e5f5
-    style H fill:#f3e5f5
-    style J fill:#f3e5f5
-    
-    %% Color Group 4: F,K
-    style F fill:#fff3e0
-    style K fill:#fff3e0
+```
+┌──────────────────┐     ┌────────────────────┐     ┌──────────────────┐
+│ Temporal         │────▶│ React Agent        │────▶│ DSPy Agent       │
+│ Workflows        │     │ Activity           │     │ (Reasoning)      │
+└──────────────────┘     └────────────────────┘     └──────────────────┘
+                                                              │
+                                                              ▼
+┌──────────────────┐     ┌────────────────────┐     ┌──────────────────┐
+│ Extract Agent    │◀────│ Query Fully        │◀────│ Tool Execution   │
+│ Activity         │     │ Answered?          │     │ Activity         │
+└──────────────────┘     └────────────────────┘     └──────────────────┘
 ```
 
-### Execution Flow
+See [Architecture Documentation](docs/ARCHITECTURE.md) for detailed system design.
 
-1. **User message triggers the agentic workflow**
-   - *Temporal Benefit*: Workflow ID provides unique tracking and resumability
-   
-2. **React Agent performs iterative reasoning cycles**
-   - *Temporal Benefit*: Each iteration is checkpointed; failures resume from last successful step
-   - *Resilience*: Automatic retries on transient LLM API failures
-   
-3. **Tools are selected and executed based on reasoning**
-   - *Temporal Benefit*: Tool calls are wrapped in activities with configurable retry policies
-   - *Fault Tolerance*: Network failures, rate limits, and timeouts handled automatically
-   
-4. **Results are collected into a trajectory**
-   - *Temporal Benefit*: State persisted durably; no data loss even on system crashes
-   - *Observability*: Full execution history visible in Temporal UI
-   
-5. **Extract Agent synthesizes final response from complete trajectory**
-   - *Temporal Benefit*: Guaranteed to run even if previous steps took hours/days
-   - *Reliability*: Final synthesis never lost; partial results always preserved
+**Key components:**
+- **API Server**: FastAPI REST endpoints
+- **Workflows**: Temporal durable execution
+- **Agent**: DSPy reasoning loops
+- **Tools**: MCP-integrated weather services
 
 ## Usage Examples
 
