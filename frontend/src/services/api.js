@@ -3,8 +3,8 @@
 // In development, Vite proxy handles it, so we also use relative URLs
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// Default timeout in milliseconds (60 seconds)
-const DEFAULT_TIMEOUT = import.meta.env.VITE_API_TIMEOUT ? parseInt(import.meta.env.VITE_API_TIMEOUT) : 60000;
+// Default timeout in milliseconds (120 seconds for demo)
+const DEFAULT_TIMEOUT = import.meta.env.VITE_API_TIMEOUT ? parseInt(import.meta.env.VITE_API_TIMEOUT) : 120000;
 
 class ApiError extends Error {
   constructor(message, status) {
