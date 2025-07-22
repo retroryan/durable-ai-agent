@@ -68,11 +68,11 @@ Expected behavior:
 
 ## Mock Mode Testing
 
-When `TOOLS_MOCK=true` is set in the environment:
+Mock mode is controlled by the tool registry configuration:
 
-```bash
-# In worker.env or .env
-TOOLS_MOCK=true
+```python
+# Create registry with mock mode
+registry = create_tool_set_registry("agriculture", mock_results=True)
 ```
 
 All MCP tools will return predictable mock data:
@@ -133,8 +133,8 @@ MCP tool errors are gracefully handled:
 ## Testing in Docker
 
 ```bash
-# Start with mock mode
-TOOLS_MOCK=true docker-compose --profile weather_proxy up -d
+# Start services (workers default to mock mode)
+docker-compose --profile weather_proxy up -d
 
 # Test via API
 curl -X POST http://localhost:8000/chat \

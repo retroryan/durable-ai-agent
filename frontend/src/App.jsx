@@ -8,20 +8,20 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 export default function App() {
   const [currentView, setCurrentView] = useState('chat');
   const [traceEvents, setTraceEvents] = useState([]);
-  const [isMontyRunning, setIsMontyRunning] = useState(false);
+  const [isQuoteRunning, setIsQuoteRunning] = useState(false);
   const [workflowId, setWorkflowId] = useState(null);
   const [eventSource, setEventSource] = useState(null);
 
-  const startMontyWorkflow = async () => {
+  const startQuoteWorkflow = async () => {
     if (eventSource) {
       eventSource.close();
     }
 
-    setIsMontyRunning(true);
+    setIsQuoteRunning(true);
     setTraceEvents([]);
     setWorkflowId(null); // Clear any previous workflow ID
 
-    const newEventSource = new EventSource(`${API_URL}/monty/stream`);
+    const newEventSource = new EventSource(`${API_URL}/quote/stream`);
     setEventSource(newEventSource);
 
     newEventSource.onmessage = (event) => {
@@ -40,7 +40,7 @@ export default function App() {
       }]);
 
       if (data.event === 'workflow_completed' || data.event === 'workflow_failed') {
-        setIsMontyRunning(false);
+        setIsQuoteRunning(false);
         newEventSource.close();
         setEventSource(null);
       }
@@ -53,7 +53,7 @@ export default function App() {
     };
   };
 
-  const stopMontyWorkflow = async () => {
+  const stopQuoteWorkflow = async () => {
     console.log('Stop button clicked, workflowId:', workflowId); // Debug log
     if (workflowId) {
       try {
@@ -69,7 +69,7 @@ export default function App() {
         }
         
         // Update state to reflect stopped status
-        setIsMontyRunning(false);
+        setIsQuoteRunning(false);
         
         // Add a stopped event to the trace
         setTraceEvents(prev => [...prev, {
@@ -117,13 +117,13 @@ export default function App() {
             onClick={() => setCurrentView('workflow-trace')}
           >
             Workflow Trace
-            {isMontyRunning && <span className="running-indicator">●</span>}
+            {isQuoteRunning && <span className="running-indicator">●</span>}
           </button>
           <button 
-            onClick={isMontyRunning ? stopMontyWorkflow : startMontyWorkflow}
-            className={`action-button ${isMontyRunning ? 'stop-monty' : 'start-monty'}`}
+            onClick={isQuoteRunning ? stopQuoteWorkflow : startQuoteWorkflow}
+            className={`action-button ${isQuoteRunning ? 'stop-quote' : 'start-quote'}`}
           >
-            {isMontyRunning ? 'Stop Monty' : 'Start Monty'}
+            {isQuoteRunning ? 'Stop Quotes' : 'Start Quotes'}
           </button>
           {currentView === 'workflow-trace' && (
             <button 
@@ -138,19 +138,19 @@ export default function App() {
       
       <main className="app-content">
         {currentView === 'chat' ? (
-          <ChatView isMontyRunning={isMontyRunning} />
+          <ChatView isQuoteRunning={isQuoteRunning} />
         ) : (
           <WorkflowTraceView 
             events={traceEvents}
-            isRunning={isMontyRunning}
+            isRunning={isQuoteRunning}
             workflowId={workflowId}
           />
         )}
       </main>
       
-      {currentView === 'chat' && isMontyRunning && (
+      {currentView === 'chat' && isQuoteRunning && (
         <div className="status-bar">
-          Status: Monty workflow is running (click Workflow Trace tab to view)
+          Status: Quote workflow is running (click Workflow Trace tab to view)
         </div>
       )}
     </div>

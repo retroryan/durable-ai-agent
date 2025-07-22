@@ -6,25 +6,17 @@ directly, following the exact patterns from dspy/predict/react.py.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Literal, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Type
 
 import dspy
 from pydantic import BaseModel, Field
 
+from models.trajectory import Trajectory
 from shared.tool_utils import BaseTool
 from shared.tool_utils.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from dspy.signatures.signature import Signature
-
-
-class ReactAgentResult(BaseModel):
-    """Result from ReactAgent forward pass."""
-
-    trajectory: Dict[str, Any] = Field(description="Agent execution trajectory")
-    tool_name: str = Field(description="Name of the tool selected by the agent")
-    tool_args: Dict[str, Any] = Field(description="Arguments for the tool call")
-
 
 class ReactAgent(dspy.Module):
     """
@@ -109,18 +101,29 @@ class ReactAgent(dspy.Module):
 
         self.react = dspy.Predict(react_signature)
 
-    def _format_trajectory(self, trajectory: dict[str, Any]):
-        """Format trajectory for display to the LLM."""
+    def _format_trajectories(self, trajectories: List[Trajectory]):
+        """Format trajectories for display to the LLM."""
         self.logger.debug(
-            f"[ReactAgent] Formatting trajectory with keys: {list(trajectory.keys())}"
+            f"[ReactAgent] Formatting {len(trajectories)} trajectories"
         )
 
-        adapter = dspy.settings.adapter or dspy.ChatAdapter()
-        trajectory_signature = dspy.Signature(f"{', '.join(trajectory.keys())} -> x")
-        formatted = adapter.format_user_message_content(
-            trajectory_signature, trajectory
-        )
+        if not trajectories:
+            return "No previous steps."
 
+        formatted_parts = []
+        for traj in trajectories:
+            step = f"Step {traj.iteration + 1}:\n"
+            step += f"  Thought: {traj.thought}\n"
+            step += f"  Tool: {traj.tool_name}\n"
+            if traj.tool_args:
+                step += f"  Args: {traj.tool_args}\n"
+            if traj.observation:
+                step += f"  Result: {traj.observation}\n"
+            if traj.error:
+                step += f"  Error: {traj.error}\n"
+            formatted_parts.append(step)
+        
+        formatted = "\n".join(formatted_parts)
         self.logger.debug(
             f"[ReactAgent] Formatted trajectory length: {len(formatted)} chars"
         )
@@ -128,33 +131,33 @@ class ReactAgent(dspy.Module):
         return formatted
 
     def forward(
-        self, trajectory: dict, current_iteration: int, **input_args
-    ) -> ReactAgentResult:
+        self, trajectories: List[Trajectory], current_iteration: int, **input_args
+    ) -> Trajectory:
         """
         Execute the reactive tool-calling loop.
 
         Args:
-            trajectory: Dictionary containing the conversation trajectory
+            trajectories: List of previous trajectory steps
             current_iteration: Current iteration number (1-based)
             **input_args: Other signature input fields (e.g., user_query)
 
         Returns:
-            ReactAgentResult: Result containing updated trajectory and tool name
+            Trajectory: The trajectory for this iteration
         """
-        # Calculate the current index (0-based for trajectory keys)
+        # Calculate the current index (0-based)
         idx = current_iteration - 1
 
         self.logger.info(
             f"[ReactAgent] Starting forward pass - Iteration: {current_iteration}, "
             f"Query: '{input_args.get('user_query', 'N/A')}'"
         )
-        self.logger.debug(f"[ReactAgent] Current trajectory state: {trajectory}")
+        self.logger.debug(f"[ReactAgent] Number of previous trajectories: {len(trajectories)}")
 
         try:
-            self.logger.debug(f"[ReactAgent] Calling react with formatted trajectory")
+            self.logger.debug(f"[ReactAgent] Calling react with formatted trajectories")
 
             pred = self.react(
-                **input_args, trajectory=self._format_trajectory(trajectory)
+                **input_args, trajectory=self._format_trajectories(trajectories)
             )
 
             self.logger.info(
@@ -166,25 +169,24 @@ class ReactAgent(dspy.Module):
             self.logger.warning(
                 f"[ReactAgent] ValueError: Agent failed to select a valid tool: {err}"
             )
-            # Return trajectory with error info
-            trajectory[f"error_{idx}"] = str(err)
-            self.logger.debug(
-                f"[ReactAgent] Returning early with error, trajectory updated with error_{idx}"
+            # Return error trajectory
+            return Trajectory(
+                iteration=idx,
+                thought="Error occurred during tool selection",
+                tool_name="error",
+                tool_args={},
+                error=str(err)
             )
-            return ReactAgentResult(
-                trajectory=trajectory, tool_name="finish", tool_args={}
-            )
 
-        # Store the prediction details in trajectory with proper indexing
-        trajectory[f"thought_{idx}"] = pred.next_thought
-        trajectory[f"tool_name_{idx}"] = pred.next_tool_name
-        trajectory[f"tool_args_{idx}"] = pred.next_tool_args
-
-        self.logger.info(f"[ReactAgent] Updated trajectory with iteration {idx} data")
-        self.logger.debug(f"[ReactAgent] Final trajectory state: {trajectory}")
-
-        return ReactAgentResult(
-            trajectory=trajectory,
+        # Create and return new trajectory
+        trajectory = Trajectory(
+            iteration=idx,
+            thought=pred.next_thought,
             tool_name=pred.next_tool_name,
-            tool_args=pred.next_tool_args,
+            tool_args=pred.next_tool_args
         )
+
+        self.logger.info(f"[ReactAgent] Created trajectory for iteration {idx}")
+        self.logger.debug(f"[ReactAgent] Trajectory: {trajectory}")
+
+        return trajectory

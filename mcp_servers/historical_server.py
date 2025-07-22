@@ -17,11 +17,6 @@ from starlette.responses import JSONResponse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Check for mock mode
-MOCK_MODE = os.getenv("TOOLS_MOCK", "false").lower() == "true"
-if MOCK_MODE:
-    logger.info("🔧 Running historical server in MOCK MODE - no external API calls will be made")
-
 # Import shared utilities
 try:
     # When running as a script
@@ -32,8 +27,11 @@ try:
         get_daily_params,
         get_hourly_params,
     )
-
     from models import HistoricalRequest
+    from mock_weather_utils import (
+        is_mock_mode, resolve_coordinates, create_location_info,
+        MockCoordinates, MockWeatherResponse, DailyWeatherData
+    )
 except ImportError:
     # When imported as a module
     from .api_utils import (
@@ -44,6 +42,15 @@ except ImportError:
         get_hourly_params,
     )
     from .models import HistoricalRequest
+    from .mock_weather_utils import (
+        is_mock_mode, resolve_coordinates, create_location_info,
+        MockCoordinates, MockWeatherResponse, DailyWeatherData
+    )
+
+# Check for mock mode
+MOCK_MODE = is_mock_mode()
+if MOCK_MODE:
+    logger.info("🔧 Running historical server in MOCK MODE - no external API calls will be made")
 
 # Initialize FastMCP server
 server = FastMCP(name="openmeteo-historical")
@@ -56,40 +63,42 @@ async def health_check(request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy", "service": "historical-server"})
 
 
-def get_mock_historical(coords: dict, start_date: str, end_date: str) -> dict:
+def get_mock_historical(coords: MockCoordinates, start_date: str, end_date: str) -> dict:
     """Return mock historical weather data for testing."""
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
     days = (end - start).days + 1
     
-    daily_data = {
-        "time": [],
-        "temperature_2m_max": [],
-        "temperature_2m_min": [],
-        "precipitation_sum": [],
-        "rain_sum": [],
-    }
+    time_list = []
+    temperature_2m_max = []
+    temperature_2m_min = []
+    precipitation_sum = []
+    rain_sum = []
     
     for i in range(days):
         date_str = (start + timedelta(days=i)).strftime("%Y-%m-%d")
-        daily_data["time"].append(date_str)
-        daily_data["temperature_2m_max"].append(22 + i * 0.3)
-        daily_data["temperature_2m_min"].append(12 + i * 0.2)
-        daily_data["precipitation_sum"].append(0 if i % 4 else 5.2)
-        daily_data["rain_sum"].append(0 if i % 4 else 5.2)
+        time_list.append(date_str)
+        temperature_2m_max.append(22 + i * 0.3)
+        temperature_2m_min.append(12 + i * 0.2)
+        precipitation_sum.append(0 if i % 4 else 5.2)
+        rain_sum.append(0 if i % 4 else 5.2)
     
-    return {
-        "location_info": {
-            "name": coords.get("name", f"{coords['latitude']:.4f},{coords['longitude']:.4f}"),
-            "coordinates": {
-                "latitude": coords["latitude"],
-                "longitude": coords["longitude"],
-            },
-        },
-        "daily": daily_data,
-        "summary": f"Mock historical weather from {start_date} to {end_date}",
-        "mock": True,
-    }
+    daily_data = DailyWeatherData(
+        time=time_list,
+        temperature_2m_max=temperature_2m_max,
+        temperature_2m_min=temperature_2m_min,
+        precipitation_sum=precipitation_sum,
+        rain_sum=rain_sum
+    )
+    
+    response = MockWeatherResponse(
+        location_info=create_location_info(coords),
+        daily=daily_data,
+        summary=f"Mock historical weather from {start_date} to {end_date}",
+        mock=True
+    )
+    
+    return response.model_dump()
 
 
 @server.tool
@@ -117,43 +126,32 @@ async def get_historical_weather(request: HistoricalRequest) -> dict:
                 "error": f"Historical data only available before {min_date}. Use forecast API for recent dates."
             }
 
-        # Coordinate priority: direct coords > location name
-        if request.latitude is not None and request.longitude is not None:
-            coords = {
-                "latitude": request.latitude,
-                "longitude": request.longitude,
-                "name": request.location
-                or f"{request.latitude:.4f},{request.longitude:.4f}",
-            }
-        elif request.location:
-            # In mock mode, use simple coordinate mapping
-            if MOCK_MODE:
-                # Simple mock coordinates for common locations
-                mock_coords = {
-                    "new york": {"latitude": 40.7128, "longitude": -74.0060, "name": "New York"},
-                    "london": {"latitude": 51.5074, "longitude": -0.1278, "name": "London"},
-                    "san francisco": {"latitude": 37.7749, "longitude": -122.4194, "name": "San Francisco"},
-                    "des moines": {"latitude": 41.5868, "longitude": -93.6250, "name": "Des Moines"},
-                    "ames": {"latitude": 42.0308, "longitude": -93.6319, "name": "Ames"},
-                    "miami": {"latitude": 25.7617, "longitude": -80.1918, "name": "Miami"},
+        # In mock mode, use mock utilities for coordinate resolution
+        if MOCK_MODE:
+            coords = resolve_coordinates(request.location, request.latitude, request.longitude)
+            if not coords:
+                return {
+                    "error": "Either location name or coordinates (latitude, longitude) required"
                 }
-                location_key = request.location.lower().replace(",", "").strip()
-                coords = mock_coords.get(location_key, {
-                    "latitude": 40.7128,
-                    "longitude": -74.0060,
-                    "name": request.location
-                })
-            else:
+        else:
+            # Real mode: use API or provided coordinates
+            if request.latitude is not None and request.longitude is not None:
+                coords = {
+                    "latitude": request.latitude,
+                    "longitude": request.longitude,
+                    "name": request.location or f"{request.latitude:.4f},{request.longitude:.4f}",
+                }
+            elif request.location:
                 coords = await get_coordinates(request.location)
                 if not coords:
                     return {
                         "error": f"Could not find location: {request.location}. Please try a major city name."
                     }
-        else:
-            # This should not happen due to Pydantic validation
-            return {
-                "error": "Either location name or coordinates (latitude, longitude) required"
-            }
+            else:
+                # This should not happen due to Pydantic validation
+                return {
+                    "error": "Either location name or coordinates (latitude, longitude) required"
+                }
 
         # Return mock data if in mock mode
         if MOCK_MODE:
@@ -195,12 +193,28 @@ async def get_historical_weather(request: HistoricalRequest) -> dict:
 
 
 if __name__ == "__main__":
-    # Start the server with HTTP transport
+    import argparse
     import os
 
-    host = os.getenv(
-        "MCP_HOST", "0.0.0.0" if os.path.exists("/.dockerenv") else "127.0.0.1"
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="FastMCP Historical Weather Server")
+    parser.add_argument(
+        "--transport",
+        "-t",
+        choices=["stdio", "streamable-http"],
+        default="streamable-http",
+        help="Transport protocol (stdio or streamable-http)"
     )
-    port = int(os.getenv("MCP_PORT", "7779"))
-    print(f"Starting historical server on {host}:{port}")
-    server.run(transport="streamable-http", host=host, port=port, path="/mcp")
+    args = parser.parse_args()
+
+    if args.transport == "stdio":
+        # Run in stdio mode for direct process communication
+        server.run(transport="stdio")
+    else:
+        # Run in HTTP mode
+        host = os.getenv(
+            "MCP_HOST", "0.0.0.0" if os.path.exists("/.dockerenv") else "127.0.0.1"
+        )
+        port = int(os.getenv("MCP_PORT", "7779"))
+        print(f"Starting historical server on {host}:{port}")
+        server.run(transport="streamable-http", host=host, port=port, path="/mcp")

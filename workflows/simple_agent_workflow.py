@@ -17,10 +17,10 @@ class SimpleAgentWorkflow:
         """Initialize workflow state."""
         self.query_count = 0
 
-    async def _handle_weather_query(self, user_message: str, user_name: str) -> dict:
+    async def _handle_weather_query(self, prompt: str, user_name: str) -> dict:
         """Handle weather queries that start with 'weather:' prefix."""
         # Extract the query after "weather:"
-        query = user_message[8:].strip()  # Remove "weather:" prefix and trim whitespace
+        query = prompt[8:].strip()  # Remove "weather:" prefix and trim whitespace
         workflow.logger.info(
             f"[SimpleAgentWorkflow] Weather prefix detected, extracted query: '{query}'"
         )
@@ -68,14 +68,14 @@ class SimpleAgentWorkflow:
         return activity_result
 
 
-    async def _handle_default_query(self, user_message: str, user_name: str) -> dict:
+    async def _handle_default_query(self, prompt: str, user_name: str) -> dict:
         """Handle default queries (backward compatibility with events)."""
         workflow.logger.info(
             f"[SimpleAgentWorkflow] No specific keyword detected, defaulting to find_events_activity"
         )
         return await workflow.execute_activity(
             "find_events_activity",
-            args=[user_message, user_name],
+            args=[prompt, user_name],
             start_to_close_timeout=timedelta(seconds=30),
             retry_policy=RetryPolicy(
                 maximum_attempts=3,
@@ -85,12 +85,12 @@ class SimpleAgentWorkflow:
         )
 
     @workflow.run
-    async def run(self, user_message: str, user_name: str = "anonymous") -> Response:
+    async def run(self, prompt: str, user_name: str = "anonymous") -> Response:
         """
         Main workflow execution.
 
         Args:
-            user_message: The message from the user
+            prompt: The message from the user
             user_name: The name of the user
 
         Returns:
@@ -101,17 +101,17 @@ class SimpleAgentWorkflow:
             f"[SimpleAgentWorkflow] Starting workflow execution - "
             f"Workflow ID: {workflow.info().workflow_id}, User: {user_name}"
         )
-        workflow.logger.info(f"[SimpleAgentWorkflow] User message: '{user_message}'")
+        workflow.logger.info(f"[SimpleAgentWorkflow] User message: '{prompt}'")
 
         # Increment query counter to demonstrate state persistence
         self.query_count += 1
         workflow.logger.info(f"[SimpleAgentWorkflow] Query count: {self.query_count}")
 
         # Route to appropriate activity based on user message content
-        if user_message.lower().startswith("weather:"):
-            activity_result = await self._handle_weather_query(user_message, user_name)
+        if prompt.lower().startswith("weather:"):
+            activity_result = await self._handle_weather_query(prompt, user_name)
         else:
-            activity_result = await self._handle_default_query(user_message, user_name)
+            activity_result = await self._handle_default_query(prompt, user_name)
 
         # Return structured response
         # Handle different activity response formats

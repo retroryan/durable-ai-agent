@@ -2,7 +2,7 @@ import { useState } from 'react';
 import ChatWindow from '../components/ChatWindow';
 import { useWorkflow } from '../hooks/useWorkflow';
 
-export default function ChatView({ isMontyRunning }) {
+export default function ChatView({ isQuoteRunning }) {
   const [inputValue, setInputValue] = useState('');
   const {
     workflowId,

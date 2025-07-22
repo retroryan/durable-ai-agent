@@ -110,13 +110,16 @@ The workflow automatically routes based on the `is_mcp` class variable.
 
 All MCP servers should support mock mode for testing:
 
-### Environment Variable
+### Tool Registry Configuration
 
-Set `TOOLS_MOCK=true` to enable mock mode:
+Mock mode is configured when creating the tool registry:
 
-```bash
-# In worker.env or .env
-TOOLS_MOCK=true
+```python
+# For mock mode (default in worker and demo)
+registry = create_tool_set_registry(tool_set_name, mock_results=True)
+
+# For real mode (use --real flag in demo)
+registry = create_tool_set_registry(tool_set_name, mock_results=False)
 ```
 
 ### Server Implementation
@@ -125,7 +128,8 @@ TOOLS_MOCK=true
 # In your MCP server
 import os
 
-MOCK_MODE = os.getenv("TOOLS_MOCK", "false").lower() == "true"
+# MCP servers can still check their own environment for mock mode
+MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
 
 @server.tool
 async def my_tool(request: MyRequest) -> dict:
@@ -190,7 +194,7 @@ else:
 
 1. **Use MCPTool Base Class**: Inherit from `MCPTool` for automatic MCP handling
 2. **Reuse Argument Models**: Maintain consistency across tool implementations
-3. **Support Mock Mode**: All servers should check `TOOLS_MOCK` environment variable
+3. **Support Mock Mode**: Tools support mock mode through the registry configuration
 4. **Dynamic Tool Names**: Understand that tool names change based on `MCP_USE_PROXY`
 5. **Proper Timeouts**: MCP tools may need longer timeouts for network calls
 6. **Error Handling**: MCP servers should return structured error responses
@@ -204,7 +208,7 @@ class WeatherForecastTool(MCPTool):
     wind, and other meteorological conditions."""
     
     NAME: ClassVar[str] = "get_weather_forecast"
-    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast"
+    MODULE: ClassVar[str] = "tools.agriculture.weather_forecast"
     is_mcp: ClassVar[bool] = True
     
     description: str = (
@@ -249,6 +253,6 @@ If MCP execution fails:
 ### Mock Mode Not Working
 
 If mock mode isn't activated:
-1. Verify `TOOLS_MOCK=true` is set
-2. Check server logs for mock mode message
-3. Ensure server checks the environment variable
+1. Verify the tool registry was created with `mock_results=True`
+2. Check that you're not using the `--real` flag in the demo
+3. MCP servers may have their own mock mode configuration

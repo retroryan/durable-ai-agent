@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
 
-from tools.precision_agriculture.agricultural_weather import AgriculturalWeatherTool
-from tools.precision_agriculture.historical_weather import HistoricalWeatherTool
-from tools.precision_agriculture.weather_forecast import WeatherForecastTool
+from tools.agriculture.agricultural_weather import AgriculturalWeatherTool
+from tools.agriculture.historical_weather import HistoricalWeatherTool
+from tools.agriculture.weather_forecast import WeatherForecastTool
 
 
 def test_historical_weather(use_real=False):

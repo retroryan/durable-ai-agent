@@ -2,21 +2,19 @@
 import logging
 
 # Configure logging
-import asyncio
-import json
 import os
 import time
-import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from temporalio.client import Client
 
 from api.services.workflow_service import WorkflowService
+from models.trajectory import summarize_trajectories
 from models.types import Response, WorkflowInput, WorkflowState, AgenticAIWorkflowState
 from models.api_models import (
     SendMessageRequest, SendMessageResponse,
@@ -297,36 +295,37 @@ async def get_ai_workflow_state(workflow_id: str, include_trajectory: bool = Fal
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/workflow/{workflow_id}/ai-trajectory")
-async def get_ai_workflow_trajectory(workflow_id: str):
+@app.get("/workflow/{workflow_id}/ai-trajectories")
+async def get_ai_workflow_trajectories(workflow_id: str):
     """
-    Get the full trajectory of an AgenticAIWorkflow.
+    Get the full trajectories of an AgenticAIWorkflow.
     
     Args:
         workflow_id: The workflow ID
         
     Returns:
-        The complete trajectory dictionary
+        The complete list of trajectories
     """
     if not workflow_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
     try:
-        logger.info(f"Getting AI workflow trajectory for workflow_id: {workflow_id}")
+        logger.info(f"Getting AI workflow trajectories for workflow_id: {workflow_id}")
         
-        trajectory = await workflow_service.get_ai_workflow_trajectory(workflow_id)
+        trajectories = await workflow_service.get_ai_workflow_trajectories(workflow_id)
         
-        if trajectory is None:
-            logger.warning(f"AI workflow trajectory not found: {workflow_id}")
+        if trajectories is None:
+            logger.warning(f"AI workflow trajectories not found: {workflow_id}")
             raise HTTPException(status_code=404, detail="Workflow not found")
         
         logger.info(
-            f"Retrieved trajectory for workflow_id: {workflow_id}, "
-            f"keys: {list(trajectory.keys()) if trajectory else []}"
+            f"Retrieved trajectories for workflow_id: {workflow_id}, "
+            f"summary: {summarize_trajectories(trajectories) if trajectories else 'No trajectories'}"
         )
         return {
             "workflow_id": workflow_id,
-            "trajectory": trajectory
+            "trajectories": trajectories,
+            "summary": summarize_trajectories(trajectories) if trajectories else None
         }
         
     except HTTPException:
@@ -398,7 +397,7 @@ async def send_message(workflow_id: str, request: SendMessageRequest):
         handle = workflow_service.client.get_workflow_handle(workflow_id)
         
         # Signal the workflow
-        await handle.signal("user_message", request.message)
+        await handle.signal("prompt", request.message)
         
         return SendMessageResponse(
             status="message sent",
@@ -516,22 +515,6 @@ async def request_summary(workflow_id: str):
     except Exception as e:
         logger.error(f"Error requesting summary for workflow_id: {workflow_id}, error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/monty/stream")
-async def monty_stream():
-    """Stream Monty Python workflow execution."""
-    if not workflow_service:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    
-    from api.streaming import MontyPythonStreaming
-    
-    streaming_handler = MontyPythonStreaming(
-        client=workflow_service.client,
-        task_queue=workflow_service.task_queue
-    )
-    
-    return await streaming_handler.stream()
 
 
 @app.post("/workflow/{workflow_id}/signal/stop")

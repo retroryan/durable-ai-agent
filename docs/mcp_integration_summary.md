@@ -39,9 +39,9 @@ The MCP (Model Context Protocol) tools integration has been successfully impleme
 - Tool descriptions distinguish MCP vs traditional
 
 ### 6. Mock Mode Implementation (Phase 6)
-- All MCP servers support `TOOLS_MOCK=true` environment variable
+- Mock mode is controlled by the tool registry configuration
 - Mock data functions return predictable test data
-- Servers log when running in mock mode
+- Tools created with `mock_results=True` use predictable test data
 - Mock responses include `"mock": true` flag
 
 ### 7. Documentation (Phase 7)
@@ -69,9 +69,10 @@ The MCP (Model Context Protocol) tools integration has been successfully impleme
 - Direct integration with existing patterns
 
 ### Mock Mode First
-- All testing uses mock mode (`TOOLS_MOCK=true`)
+- Workers and tests default to mock mode
 - Predictable, fast, isolated tests
 - No external API dependencies
+- Use `--real` flag in demos for actual API calls
 
 ### Reuse Existing Patterns
 - MCP execution follows same trajectory pattern
@@ -83,7 +84,7 @@ The MCP (Model Context Protocol) tools integration has been successfully impleme
 ### New Files
 - `shared/tool_utils/mcp_tool.py` - MCPTool base class
 - `activities/mcp_execution_activity.py` - MCP execution activity
-- `tools/precision_agriculture/*_mcp.py` - Three MCP tool implementations
+- `tools/agriculture/*_mcp.py` - Three MCP tool implementations
 - `tests/` - Comprehensive test coverage for all components
 - `integration_tests/test_mcp_tools_e2e.py` - E2E integration tests
 - `integration_tests/test_mcp_weather_flow.py` - Detailed flow tests

@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import logging
 import os
-from datetime import datetime
 
 import dspy
 from dotenv import load_dotenv
@@ -11,10 +10,7 @@ from temporalio.worker import Worker
 from activities.tool_execution_activity import ToolExecutionActivity
 from activities.react_agent_activity import ReactAgentActivity
 from activities.extract_agent_activity import ExtractAgentActivity
-from activities.monty_python_quote_activity import get_random_monty_python_quote
 
-
-from activities.event_finder_activity import find_events_activity
 from shared.tool_utils.registry import create_tool_set_registry
 from agentic_loop.react_agent import ReactAgent
 from agentic_loop.extract_agent import ReactExtract
@@ -22,8 +18,6 @@ from shared.config import TEMPORAL_TASK_QUEUE, get_temporal_client
 from shared.llm_utils import LLMConfig, setup_llm
 from shared.logging_config import setup_file_logging
 from workflows.agentic_ai_workflow import AgenticAIWorkflow
-from workflows.simple_agent_workflow import SimpleAgentWorkflow
-from workflows.monty_python_workflow import MontyPythonWorkflow
 
 
 async def main():
@@ -38,22 +32,16 @@ async def main():
     llm_config = LLMConfig.from_env()
     setup_llm(llm_config)
 
-    # Create tool registry with mock configuration
+    # Create tool registry with mock configuration (default to mock for worker)
     tool_set_name = os.getenv("TOOL_SET", "agriculture")
-    tools_mock = os.getenv("TOOLS_MOCK", "true").lower() == "true"
-    registry = create_tool_set_registry(tool_set_name, mock_results=tools_mock)
-    logging.info(f"Tool registry created for tool set: {tool_set_name} (mock_results={tools_mock})")
+    # Workers default to mock mode for safety and predictability
+    registry = create_tool_set_registry(tool_set_name, mock_results=True)
+    logging.info(f"Tool registry created for tool set: {tool_set_name} (mock_results=True)")
 
     # Initialize the Agentic React Agent here
     tool_set_signature = registry.get_react_signature()
 
     if tool_set_signature:
-        # Format the signature's docstring with current date if needed
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        if hasattr(tool_set_signature, "__doc__") and tool_set_signature.__doc__:
-            tool_set_signature.__doc__ = tool_set_signature.__doc__.format(
-                current_date=current_date
-            )
         ReactSignature = tool_set_signature
     else:
         # Fallback to generic signature
@@ -107,13 +95,11 @@ async def main():
             worker = Worker(
                 client,
                 task_queue=TEMPORAL_TASK_QUEUE,
-                workflows=[AgenticAIWorkflow, SimpleAgentWorkflow, MontyPythonWorkflow],
+                workflows=[AgenticAIWorkflow],
                 activities=[
                     react_agent_activity.run_react_agent,
                     extract_agent_activity.run_extract_agent,
                     tool_execution_activity.execute_tool,
-                    find_events_activity,
-                    get_random_monty_python_quote,
                 ],
                 activity_executor=activity_executor,
             )

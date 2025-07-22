@@ -1,25 +1,22 @@
 """Simple workflow that demonstrates Temporal patterns with minimal complexity."""
+from collections import deque
 from datetime import timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Deque
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
+from models.trajectory import Trajectory
 from models.types import (
     ActivityStatus,
     ExtractAgentActivityResult,
     ReactAgentActivityResult,
-    Response,
     ToolExecutionRequest,
     ToolExecutionResult,
-    WorkflowStatus,
+    WorkflowStatus, WorkflowSummary, ConversationHistory, Message,
 )
 
 with workflow.unsafe.imports_passed_through():
-    import http.client
-    import dspy
-    import requests
-    import urllib3
     from activities.extract_agent_activity import ExtractAgentActivity
     from activities.react_agent_activity import ReactAgentActivity
     from activities.tool_execution_activity import ToolExecutionActivity
@@ -27,127 +24,121 @@ with workflow.unsafe.imports_passed_through():
 
 @workflow.defn
 class AgenticAIWorkflow:
-    """An agentic ai workflow that calls find_events activity."""
+    """Signal-driven workflow that processes prompts through a React agent loop."""
 
     def __init__(self):
         """Initialize workflow state."""
-        self.query_count = 0
-        self.trajectory = {}
-        self.tools_used = []
+        self.trajectories: List[Trajectory] = []
         self.current_iteration = 0
         self.execution_time = 0.0
         self.workflow_status = WorkflowStatus.INITIALIZED
+        self.prompt_queue: Deque[str] = deque()
+        self.user_name: str = "default_user"
+        self.chat_ended: bool = False
+        self.conversation_history: ConversationHistory = {"messages": []}
 
     @workflow.run
-    async def run(self, user_message: str, user_name: str = "anonymous") -> Response:
+    async def run(self, workflowSummary: WorkflowSummary) -> ConversationHistory:
         """
-        Main workflow execution.
+        Main workflow execution loop.
 
         Args:
-            user_message: The message from the user
-            user_name: The name of the user
+           workflowSummary: Summary of the workflow to initialize state
 
         Returns:
-            Response with event information
+            ConversationHistory with all messages
         """
-        # Log workflow start
+        # Initialize from workflow summary
+        self.user_name = workflowSummary.get("user_name", "default_user")
+        
         workflow.logger.info(
-            f"[AgenticAIWorkflow] Starting workflow execution for user: {user_name}, "
-            f"workflow_id: {workflow.info().workflow_id}, "
-            f"parent_workflow_id: {workflow.info().parent.workflow_id if workflow.info().parent else 'None'}"
-        )
-        workflow.logger.info(f"[AgenticAIWorkflow] User message: '{user_message}'")
-
-        # Increment query counter to demonstrate state persistence
-        self.query_count += 1
-        workflow.logger.info(f"[AgenticAIWorkflow] Query count: {self.query_count}")
-
-        # Run the React agent loop
-        self.workflow_status = WorkflowStatus.RUNNING_REACT_LOOP
-        trajectory, tools_used, execution_time = await self._run_react_loop(
-            user_message=user_message,
-            user_name=user_name,
-            max_iterations=5
+            f"[AgenticAIWorkflow] Starting workflow for user: {self.user_name}, "
+            f"workflow_id: {workflow.info().workflow_id}"
         )
         
-        # Update instance variables for state persistence
-        self.trajectory = trajectory
-        self.tools_used = tools_used
-        self.execution_time = execution_time
-
-        # Extract final answer using ExtractAgentActivity
-        self.workflow_status = WorkflowStatus.EXTRACTING_ANSWER
-        final_answer = await self._extract_final_answer(
-            trajectory=trajectory,
-            user_query=user_message,
-            user_name=user_name
-        )
-
-        # Create response message
-        workflow.logger.debug(f"[AgenticAIWorkflow] ExtractAgent result - Status: {final_answer.status}, Answer: '{final_answer.answer}', Answer type: {type(final_answer.answer)}")
-        
-        if final_answer.status == ActivityStatus.SUCCESS and final_answer.answer is not None and str(final_answer.answer).strip():
-            # Return the clean, direct answer from ExtractAgent
-            response_message = final_answer.answer
-            workflow.logger.info(
-                f"[AgenticAIWorkflow] Successfully extracted answer for {user_name}: {final_answer.answer}"
+        # Main event loop
+        while True:
+            # Wait for prompt or end signal
+            await workflow.wait_condition(
+                lambda: bool(self.prompt_queue) or self.chat_ended
             )
-        elif final_answer.status == ActivityStatus.SUCCESS:
-            # If extraction succeeded but no answer, return the latest meaningful tool result from trajectory
-            latest_observation = None
-            for key in sorted(trajectory.keys(), reverse=True):
-                if key.startswith("observation_") and not trajectory[key].startswith("Error:") and trajectory[key] != "Completed.":
-                    latest_observation = trajectory[key]
-                    break
             
-            if latest_observation:
-                response_message = latest_observation
-                workflow.logger.info(
-                    f"[AgenticAIWorkflow] Using latest meaningful observation as answer for {user_name}"
-                )
-            else:
-                response_message = "No result found"
-                workflow.logger.warning(
-                    f"[AgenticAIWorkflow] No meaningful observations found in trajectory for {user_name}"
-                )
-        else:
-            response_message = f"Error: {final_answer.error or 'Unknown error'}"
-            workflow.logger.error(
-                f"[AgenticAIWorkflow] Failed to extract answer for {user_name}: {final_answer.error}"
-            )
+            # Check if chat should end
+            if self.chat_ended:
+                workflow.logger.info("[AgenticAIWorkflow] Chat ending, returning conversation history")
+                return self.conversation_history
+                
+            # Process pending prompts
+            if self.prompt_queue:
+                await self.process_prompt_agent_loop()
 
-        # Log summary
-        workflow.logger.info(
-            f"[AgenticAIWorkflow] Workflow completed. Tools used: {', '.join(tools_used) if tools_used else 'None'}, "
-            f"Execution time: {execution_time:.2f}s"
-        )
+    async def process_prompt_agent_loop(self):
+        """Process a single prompt through the agent loop."""
+        if not self.prompt_queue:
+            return
+            
+        # Get and remove prompt from queue
+        prompt = self.prompt_queue.popleft()
         
-        self.workflow_status = WorkflowStatus.COMPLETED
+        try:
+            workflow.logger.info(f"[AgenticAIWorkflow] Processing prompt: {prompt}")
+            
+            # Run the React agent loop (following demo pattern)
+            trajectories, tools_used, execution_time = await self._run_react_loop(
+                prompt=prompt,
+                user_name=self.user_name,
+                max_iterations=5
+            )
+            
+            # Update instance state
+            self.trajectories = trajectories
+            self.tools_used = tools_used
+            self.execution_time = execution_time
 
-        return Response(
-            message=response_message,
-            event_count=len(tools_used),
-            query_count=self.query_count,
-        )
+            # Extract final answer
+            self.workflow_status = WorkflowStatus.EXTRACTING_ANSWER
+            final_answer = await self._extract_final_answer(
+                trajectories=trajectories,
+                user_query=prompt,
+                user_name=self.user_name
+            )
+            
+            # Process the result
+            response_message = self._format_response(final_answer, trajectories)
+            
+            # Save to conversation history
+            self.conversation_history["messages"]= response_message
+            
+            # Log summary
+            workflow.logger.info(
+                f"[AgenticAIWorkflow] Prompt processed successfully. Tools used: {', '.join(tools_used) if tools_used else 'None'}, "
+                f"Execution time: {execution_time:.2f}s"
+            )
+            self.workflow_status = WorkflowStatus.COMPLETED
+            
+        except Exception as e:
+            workflow.logger.error(f"[AgenticAIWorkflow] Error processing prompt: {e}")
+            self.conversation_history["messages"]=  f"Error processing prompt: {e}"
+            self.workflow_status = WorkflowStatus.FAILED
 
     async def _run_react_loop(
         self,
-        user_message: str,
+        prompt: str,
         user_name: str,
         max_iterations: int = 5
-    ) -> Tuple[Dict[str, Any], List[str], float]:
+    ) -> Tuple[List[Trajectory], List[str], float]:
         """
         Run the React agent loop until completion or max iterations.
 
         Args:
-            user_message: The user's query
+            prompt: The user's query
             user_name: The name of the user
             max_iterations: Maximum number of iterations
 
         Returns:
-            Tuple of (trajectory dictionary, tools used list, execution time)
+            Tuple of (list of trajectories, tools used list, execution time)
         """
-        trajectory = {}
+        trajectories: List[Trajectory] = []
         tools_used = []
         current_iteration = 1
         start_time = workflow.now()
@@ -164,9 +155,9 @@ class AgenticAIWorkflow:
 
             # Call ReactAgent activity
             agent_result = await self._call_react_agent(
-                user_message=user_message,
+                prompt=prompt,
                 user_name=user_name,
-                trajectory=trajectory,
+                trajectories=trajectories,
                 current_iteration=current_iteration
             )
 
@@ -177,43 +168,43 @@ class AgenticAIWorkflow:
                 self.workflow_status = WorkflowStatus.FAILED
                 break
 
-            # Update trajectory from agent result
-            trajectory = agent_result.trajectory
-            tool_name = agent_result.tool_name
-            tool_args = agent_result.tool_args or {}
+            # Update trajectories from agent result
+            trajectories = agent_result.trajectories
             
             # Update instance variable for state persistence
-            self.trajectory = trajectory
+            self.trajectories = trajectories
             self.current_iteration = current_iteration
 
+            # Get the latest trajectory (just added by ReactAgent)
+            latest_trajectory = trajectories[-1] if trajectories else None
+            
+            if not latest_trajectory:
+                workflow.logger.error("[AgenticAIWorkflow] No trajectory returned from ReactAgent")
+                break
+
             workflow.logger.info(
-                f"[AgenticAIWorkflow] Agent decision - Tool: {tool_name}, Args: {tool_args}"
+                f"[AgenticAIWorkflow] Agent decision - Tool: {latest_trajectory.tool_name}, Args: {latest_trajectory.tool_args}"
             )
 
             # Check if we're done
-            if tool_name == "finish":
+            if latest_trajectory.check_is_finish():
                 workflow.logger.info("[AgenticAIWorkflow] Agent selected 'finish' - task complete")
-                # Add final observation for finish to match demo behavior
-                idx = current_iteration - 1
-                trajectory[f"observation_{idx}"] = "Completed."
                 break
 
             # Execute the tool
             tool_result = await self._execute_tool(
-                tool_name=tool_name,
-                tool_args=tool_args,
-                trajectory=trajectory,
+                trajectories=trajectories,
                 current_iteration=current_iteration
             )
 
-            # Update trajectory with the one returned by tool execution
+            # Update trajectories with the ones returned by tool execution
             # The ToolExecutionActivity already added the observation
-            if tool_result.trajectory:
-                trajectory = tool_result.trajectory
+            if tool_result.trajectories:
+                trajectories = tool_result.trajectories
             
             # Track tools used
-            if tool_name and tool_name != "finish":
-                tools_used.append(tool_name)
+            if latest_trajectory.tool_name and not latest_trajectory.is_finish:
+                tools_used.append(latest_trajectory.tool_name)
 
             current_iteration += 1
 
@@ -223,22 +214,22 @@ class AgenticAIWorkflow:
             )
 
         execution_time = (workflow.now() - start_time).total_seconds()
-        return trajectory, tools_used, execution_time
+        return trajectories, tools_used, execution_time
 
     async def _call_react_agent(
         self,
-        user_message: str,
+        prompt: str,
         user_name: str,
-        trajectory: Dict[str, Any],
+        trajectories: List[Trajectory],
         current_iteration: int
     ) -> ReactAgentActivityResult:
         """
         Call the ReactAgent activity with proper error handling.
 
         Args:
-            user_message: The user's query
+            prompt: The user's prompt
             user_name: The name of the user
-            trajectory: Current trajectory state
+            trajectories: Current list of trajectory steps
             current_iteration: Current iteration number
 
         Returns:
@@ -248,8 +239,8 @@ class AgenticAIWorkflow:
             # Call the activity with all required parameters
             result = await workflow.execute_activity_method(
                 ReactAgentActivity.run_react_agent,
-                args=[user_message, current_iteration, trajectory, user_name],
-                start_to_close_timeout=timedelta(seconds=30),
+                args=[prompt, current_iteration, trajectories, user_name],
+                start_to_close_timeout=timedelta(seconds=60),
                 retry_policy=RetryPolicy(
                     initial_interval=timedelta(seconds=1),
                     maximum_interval=timedelta(seconds=10),
@@ -258,7 +249,7 @@ class AgenticAIWorkflow:
             )
             
             workflow.logger.debug(
-                f"[AgenticAIWorkflow] ReactAgent returned trajectory with keys: {list(result.trajectory.keys())}"
+                f"[AgenticAIWorkflow] ReactAgent returned {len(result.trajectories)} trajectories"
             )
             
             return result
@@ -270,37 +261,46 @@ class AgenticAIWorkflow:
 
     async def _execute_tool(
         self,
-        tool_name: str,
-        tool_args: Dict[str, Any],
-        trajectory: Dict[str, Any],
+        trajectories: List[Trajectory],
         current_iteration: int
     ) -> ToolExecutionResult:
         """
         Execute a tool using the ToolExecutionActivity.
 
         Args:
-            tool_name: Name of the tool to execute
-            tool_args: Arguments for the tool
-            trajectory: Current trajectory state
+            trajectories: Current list of trajectory steps
             current_iteration: Current iteration number
 
         Returns:
             ToolExecutionResult
         """
+
+        latest_trajectory = trajectories[-1] if trajectories else None
+        if not latest_trajectory or not latest_trajectory.tool_name:
+            workflow.logger.error(
+                "[AgenticAIWorkflow] No valid tool name found in latest trajectory"
+            )
+            return ToolExecutionResult(
+                success=False,
+                error="No valid tool name found",
+                execution_time=0.0,
+                trajectories=trajectories,
+            )
+
         workflow.logger.info(
-            f"[AgenticAIWorkflow] Executing tool: {tool_name} with args: {tool_args}"
+            f"[AgenticAIWorkflow] Executing tool: {latest_trajectory.tool_name} with args: {latest_trajectory.tool_args}"
         )
 
         tool_request = ToolExecutionRequest(
-            tool_name=tool_name,
-            tool_args=tool_args,
-            trajectory=trajectory,
+            tool_name=latest_trajectory.tool_name,
+            tool_args=latest_trajectory.tool_args,
+            trajectories=trajectories,
             current_iteration=current_iteration
         )
 
         try:
-            # ToolExecutionActivity returns a dict, not a ToolExecutionResult object
-            result_dict = await workflow.execute_activity_method(
+            # ToolExecutionActivity now returns a ToolExecutionResult object
+            result = await workflow.execute_activity_method(
                 ToolExecutionActivity.execute_tool,
                 args=[tool_request],
                 start_to_close_timeout=timedelta(seconds=30),
@@ -311,32 +311,6 @@ class AgenticAIWorkflow:
                 ),
             )
             
-            # Get the updated trajectory from the activity
-            updated_trajectory = result_dict.get("trajectory", trajectory)
-            
-            # Convert dict to ToolExecutionResult
-            if result_dict.get("status") == ActivityStatus.SUCCESS:
-                # Extract the observation for this iteration
-                idx = current_iteration - 1
-                observation_key = f"observation_{idx}"
-                result_text = updated_trajectory.get(observation_key, "No result")
-                
-                result = ToolExecutionResult(
-                    tool_name=tool_name,
-                    success=True,
-                    result=result_text,
-                    parameters=tool_args,
-                    trajectory=updated_trajectory
-                )
-            else:
-                result = ToolExecutionResult(
-                    tool_name=tool_name,
-                    success=False,
-                    error=result_dict.get("error", "Unknown error"),
-                    parameters=tool_args,
-                    trajectory=trajectory
-                )
-            
             workflow.logger.info(
                 f"[AgenticAIWorkflow] Tool execution completed: {'success' if result.success else 'failed'}"
             )
@@ -346,25 +320,24 @@ class AgenticAIWorkflow:
                 f"[AgenticAIWorkflow] Tool execution error: {e}"
             )
             return ToolExecutionResult(
-                tool_name=tool_name,
                 success=False,
                 error=str(e),
-                error_type=type(e).__name__,
-                trajectory=trajectory
+                trajectories=trajectories,
+                execution_time=0.0
             )
 
     async def _extract_final_answer(
         self,
-        trajectory: Dict[str, Any],
-        user_query: str,
+        trajectories: List[Trajectory],
+        prompt: str,
         user_name: str
     ) -> ExtractAgentActivityResult:
         """
         Extract the final answer from the trajectory using ExtractAgent.
 
         Args:
-            trajectory: The complete trajectory from the React loop
-            user_query: The original user query
+            trajectories: The complete list of trajectories from the React loop
+            prompt: The original user query
             user_name: The name of the user
 
         Returns:
@@ -377,7 +350,7 @@ class AgenticAIWorkflow:
         try:
             return await workflow.execute_activity_method(
                 ExtractAgentActivity.run_extract_agent,
-                args=[trajectory, user_query, user_name],
+                args=[trajectories, prompt, user_name],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=RetryPolicy(
                     initial_interval=timedelta(seconds=1),
@@ -391,24 +364,70 @@ class AgenticAIWorkflow:
             )
             return ExtractAgentActivityResult(
                 status=ActivityStatus.ERROR,
-                trajectory=trajectory,
+                trajectories=trajectories,
                 error=str(e)
             )
 
-    @workflow.query
-    def get_query_count(self) -> int:
-        """Query handler to expose workflow state."""
-        return self.query_count
+    def _format_response(self, final_answer: ExtractAgentActivityResult, trajectories: List[Trajectory]) -> str:
+        """Format the final response based on extraction results."""
+        if final_answer.status == ActivityStatus.SUCCESS and final_answer.answer:
+            return final_answer.answer
+        elif final_answer.status == ActivityStatus.SUCCESS:
+            # Fallback to latest meaningful observation
+            for traj in reversed(trajectories):
+                if traj.observation and not traj.observation.startswith("Error:") and traj.observation != "Completed.":
+                    return traj.observation
+            return "No result found"
+        else:
+            return f"Error: {final_answer.error or 'Unknown error'}"
+
+
+    @workflow.signal
+    async def prompt(self, message: str):
+        """Signal handler to add new prompts to the queue."""
+        workflow.logger.info(f"[AgenticAIWorkflow] Received prompt signal: {message}")
+        self.prompt_queue.append(message)
+        # Add user message to conversation history
+        self.conversation_history["messages"].append({
+            "role": "user",
+            "content": message,
+            "timestamp": workflow.now().isoformat()
+        })
+
+    @workflow.signal  
+    async def end_chat(self):
+        """Signal handler to end the chat."""
+        workflow.logger.info("[AgenticAIWorkflow] Received end_chat signal")
+        self.chat_ended = True
 
     @workflow.query
-    def get_status(self) -> str:
-        """Query handler to get workflow status."""
-        return f"Workflow has processed {self.query_count} queries"
+    def get_conversation_history(self) -> ConversationHistory:
+        """Query handler to get the full conversation history."""
+        return self.conversation_history
+
+    @workflow.query
+    def get_latest_response(self) -> Optional[Dict[str, Any]]:
+        """Get the latest assistant response."""
+        messages = self.conversation_history.get("messages", [])
+        for msg in reversed(messages):
+            if msg.get("role") == "assistant":
+                return msg
+        return None
+
+    @workflow.query
+    def get_pending_prompts(self) -> List[str]:
+        """Get list of prompts waiting to be processed."""
+        return list(self.prompt_queue)
     
     @workflow.query
-    def get_trajectory(self) -> Dict[str, Any]:
-        """Query handler to get the current trajectory."""
-        return self.trajectory
+    def get_workflow_status(self) -> str:
+        """Query handler to get current workflow status."""
+        return self.workflow_status
+    
+    @workflow.query
+    def get_trajectories(self) -> List[Trajectory]:
+        """Query handler to get the current trajectories."""
+        return self.trajectories
     
     @workflow.query
     def get_tools_used(self) -> List[str]:
@@ -419,10 +438,12 @@ class AgenticAIWorkflow:
     def get_workflow_details(self) -> Dict[str, Any]:
         """Query handler to get comprehensive workflow details."""
         return {
-            "query_count": self.query_count,
             "status": self.workflow_status,
+            "user_name": self.user_name,
+            "message_count": len(self.conversation_history.get("messages", [])),
+            "pending_prompts": len(self.prompt_queue),
             "current_iteration": self.current_iteration,
             "tools_used": self.tools_used,
             "execution_time": self.execution_time,
-            "trajectory_keys": list(self.trajectory.keys()) if self.trajectory else [],
+            "trajectory_count": len(self.trajectories),
         }

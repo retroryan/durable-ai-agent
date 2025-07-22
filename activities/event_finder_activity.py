@@ -10,13 +10,13 @@ from tools.find_events import find_events
 
 @activity.defn
 async def find_events_activity(
-    user_message: str, user_name: str = "anonymous"
+    prompt: str, user_name: str = "anonymous"
 ) -> Dict[str, Any]:
     """
     Activity that calls find_events with hardcoded parameters.
 
     Args:
-        user_message: The user's message (not used in current implementation)
+        prompt: The user's message (not used in current implementation)
         user_name: The name of the user making the request
 
     Returns:

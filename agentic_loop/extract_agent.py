@@ -4,11 +4,13 @@ This module synthesizes the final answer from a trajectory using dspy.ChainOfTho
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Type
+from typing import TYPE_CHECKING, Any, List, Type
 
 import dspy
 from dspy.primitives.module import Module
 from dspy.signatures.signature import ensure_signature
+
+from models.trajectory import Trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -41,31 +43,45 @@ class ReactExtract(Module):
 
         self.extract = dspy.ChainOfThought(fallback_signature)
 
-    def _format_trajectory(self, trajectory: dict[str, Any]):
-        """Format trajectory for display to the LLM."""
-        adapter = dspy.settings.adapter or dspy.ChatAdapter()
-        trajectory_signature = dspy.Signature(f"{', '.join(trajectory.keys())} -> x")
-        return adapter.format_user_message_content(trajectory_signature, trajectory)
+    def _format_trajectories(self, trajectories: List[Trajectory]):
+        """Format trajectories for display to the LLM."""
+        if not trajectories:
+            return "No previous steps."
+            
+        formatted_parts = []
+        for traj in trajectories:
+            step = f"Step {traj.iteration + 1}:\n"
+            step += f"  Thought: {traj.thought}\n"
+            step += f"  Tool: {traj.tool_name}\n"
+            if traj.tool_args:
+                step += f"  Args: {traj.tool_args}\n"
+            if traj.observation:
+                step += f"  Result: {traj.observation}\n"
+            if traj.error:
+                step += f"  Error: {traj.error}\n"
+            formatted_parts.append(step)
+        
+        return "\n".join(formatted_parts)
 
-    def forward(self, trajectory: dict[str, Any], **input_args):
+    def forward(self, trajectories: List[Trajectory], **input_args):
         """
-        Extract final answer from trajectory using Chain of Thought reasoning.
+        Extract final answer from trajectories using Chain of Thought reasoning.
 
         Args:
-            trajectory: Dictionary containing the complete interaction history
+            trajectories: List of trajectory steps containing the complete interaction history
             **input_args: Original input arguments from the signature
 
         Returns:
             dspy.Prediction with final extracted answers and reasoning
         """
-        # Format trajectory for the LLM
-        formatted_trajectory = self._format_trajectory(trajectory)
+        # Format trajectories for the LLM
+        formatted_trajectory = self._format_trajectories(trajectories)
 
         # Use ChainOfThought to reason over the trajectory and extract final answer
         extract_result = self.extract(**input_args, trajectory=formatted_trajectory)
 
         return dspy.Prediction(
             **extract_result,
-            trajectory=trajectory,
+            trajectories=trajectories,
             formatted_trajectory=formatted_trajectory,
         )

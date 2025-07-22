@@ -6,9 +6,9 @@ import pytest
 
 from models.tool_definitions import MCPServerDefinition
 from models.types import MCPConfig
-from tools.precision_agriculture.agricultural_weather import AgriculturalWeatherTool
-from tools.precision_agriculture.historical_weather import HistoricalWeatherTool
-from tools.precision_agriculture.weather_forecast import WeatherForecastTool
+from tools.agriculture.agricultural_weather import AgriculturalWeatherTool
+from tools.agriculture.historical_weather import HistoricalWeatherTool
+from tools.agriculture.weather_forecast import WeatherForecastTool
 
 
 class TestConsolidatedMCPTools:

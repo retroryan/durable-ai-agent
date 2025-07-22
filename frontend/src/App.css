@@ -67,26 +67,26 @@
   transition: all 0.2s;
 }
 
-.start-monty {
+.start-quote {
   background-color: #3498db;
   color: white;
 }
 
-.start-monty:hover:not(:disabled) {
+.start-quote:hover:not(:disabled) {
   background-color: #2980b9;
 }
 
-.start-monty:disabled {
+.start-quote:disabled {
   background-color: #95a5a6;
   cursor: not-allowed;
 }
 
-.stop-monty {
+.stop-quote {
   background-color: #e74c3c;
   color: white;
 }
 
-.stop-monty:hover {
+.stop-quote:hover {
   background-color: #c0392b;
 }
 

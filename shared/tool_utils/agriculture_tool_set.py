@@ -66,11 +66,11 @@ class AgricultureToolSet(ToolSet):
         Initializes the AgricultureToolSet, defining its name, description,
         and the specific tool classes it encompasses.
         """
-        from tools.precision_agriculture.agricultural_weather import (
+        from tools.agriculture.agricultural_weather import (
             AgriculturalWeatherTool,
         )
-        from tools.precision_agriculture.historical_weather import HistoricalWeatherTool
-        from tools.precision_agriculture.weather_forecast import WeatherForecastTool
+        from tools.agriculture.historical_weather import HistoricalWeatherTool
+        from tools.agriculture.weather_forecast import WeatherForecastTool
 
         super().__init__(
             config=ToolSetConfig(

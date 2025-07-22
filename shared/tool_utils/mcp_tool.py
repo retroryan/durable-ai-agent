@@ -6,6 +6,7 @@ capabilities to the base tool system without breaking existing functionality.
 """
 import os
 from abc import ABC
+from pathlib import Path
 from typing import ClassVar, Optional
 
 from pydantic import Field
@@ -50,45 +51,73 @@ class MCPTool(BaseTool, ABC):
     
     def get_mcp_config(self) -> MCPConfig:
         """
-        Get MCP configuration for this tool with dynamic tool name resolution.
+        Get MCP configuration for this tool with support for both HTTP and stdio.
         
-        The tool name is computed based on the MCP_USE_PROXY environment variable:
-        - When using proxy (default): Tool names are prefixed with the server name
-          because FastMCP's mount() feature adds these prefixes automatically
-        - When using direct connection: Tool names are used as-is (unprefixed)
+        Transport selection:
+        - When MCP_USE_STDIO=true: Use stdio (direct process communication)
+        - Otherwise: Use HTTP transport
+        
+        Tool name resolution:
+        - Stdio mode: Tool names are unprefixed (e.g., "get_weather_forecast")
+        - HTTP proxy mode: Tool names are prefixed (e.g., "forecast_get_weather_forecast")
+        - HTTP direct mode: Tool names are unprefixed
         
         Returns:
             MCPConfig containing server details and dynamically computed tool name.
         """
-        # Determine if we're using the proxy based on environment variable
-        # Default to true for backward compatibility with docker-compose setup
-        use_proxy = os.getenv("MCP_USE_PROXY", "true").lower() == "true"
+        # Check if we should use stdio transport
+        use_stdio = os.getenv("MCP_USE_STDIO", "false").lower() == "true"
         
-        # Get URL from environment (this already handles proxy vs direct URLs)
-        # Example proxy URL: http://weather-proxy:8000/mcp
-        # Example direct URL: http://forecast-server:7778/mcp
-        url = os.getenv("MCP_URL", "http://weather-proxy:8000/mcp")
-        
-        # Compute tool name based on proxy usage
-        # IMPORTANT: This handles the naming mismatch between proxy and direct modes
-        if use_proxy:
-            # Proxy mode: FastMCP mount() prefixes tool names with server name
-            # Example: "forecast" + "_" + "get_weather_forecast" = "forecast_get_weather_forecast"
-            tool_name = f"{self.mcp_server_name}_{self.NAME}"
-        else:
-            # Direct mode: Use unprefixed tool name
-            # Example: "get_weather_forecast"
-            tool_name = self.NAME
+        if use_stdio:
+            # Stdio mode: Direct process communication
+            # Find the project root by looking for the mcp_servers directory
+            current_path = Path(__file__).resolve()
+            project_root = current_path.parent.parent.parent  # shared/tool_utils/mcp_tool.py -> project root
             
-        return MCPConfig(
-            server_name=self.mcp_server_name,
-            tool_name=tool_name,
-            server_definition=MCPServerDefinition(
-                name=f"mcp-{self.mcp_server_name}",
-                connection_type="http",
-                url=url
+            # Build path to the MCP server script
+            server_script = project_root / "mcp_servers" / f"{self.mcp_server_name}_server.py"
+            
+            return MCPConfig(
+                server_name=self.mcp_server_name,
+                tool_name=self.NAME,  # No prefix for stdio
+                server_definition=MCPServerDefinition(
+                    name=f"{self.mcp_server_name}-stdio",
+                    connection_type="stdio",
+                    command="python",
+                    args=[str(server_script), "--transport", "stdio"],
+                    env=None
+                )
             )
-        )
+        else:
+            # HTTP mode: Original logic
+            use_proxy = os.getenv("MCP_USE_PROXY", "true").lower() == "true"
+            
+            # Compute tool name based on proxy usage
+            if use_proxy:
+                # Proxy mode: FastMCP mount() prefixes tool names with server name
+                tool_name = f"{self.mcp_server_name}_{self.NAME}"
+                url = os.getenv("MCP_URL", "http://weather-proxy:8000/mcp")
+            else:
+                # Direct mode: Use unprefixed tool name and server-specific URL
+                tool_name = self.NAME
+                # Map server names to their direct URLs
+                server_urls = {
+                    "forecast": os.getenv("MCP_FORECAST_URL", "http://localhost:7778/mcp"),
+                    "historical": os.getenv("MCP_HISTORICAL_URL", "http://localhost:7779/mcp"),
+                    "agricultural": os.getenv("MCP_AGRICULTURAL_URL", "http://localhost:7780/mcp"),
+                }
+                # Get the URL for this specific server, fallback to MCP_URL if not found
+                url = server_urls.get(self.mcp_server_name, os.getenv("MCP_URL", "http://localhost:7778/mcp"))
+                
+            return MCPConfig(
+                server_name=self.mcp_server_name,
+                tool_name=tool_name,
+                server_definition=MCPServerDefinition(
+                    name=f"mcp-{self.mcp_server_name}",
+                    connection_type="http",
+                    url=url
+                )
+            )
     
     def execute(self, **kwargs) -> str:
         """

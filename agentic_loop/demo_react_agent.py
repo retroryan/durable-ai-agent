@@ -11,12 +11,14 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 import dspy
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+from shared.tool_utils import AgricultureToolSet
 
 # Add the project root to Python path so imports work
 project_root = Path(__file__).parent.parent
@@ -28,10 +30,24 @@ from shared import ConsoleFormatter, setup_llm
 from shared.llm_utils import LLMConfig, get_full_history, save_dspy_history
 
 from shared.tool_utils.registry import create_tool_set_registry, TOOL_SET_MAP
+from models.trajectory import Trajectory, summarize_trajectories
 from models.types import ActivityStatus
 
 # Initialize module-level logger
 logger = logging.getLogger(__name__)
+
+
+# Pydantic model for test case results
+class TestCaseResult(BaseModel):
+    status: str
+    trajectories: List[Trajectory] = Field(default_factory=list)
+    tools_used: List[str] = []
+    execution_time: float = 0.0
+    answer: str = ""
+    reasoning: str = ""
+    expected_tools: List[str] = []
+    tools_match: bool = False
+    error: Optional[str] = None
 
 
 # Configure logging
@@ -64,7 +80,7 @@ def run_react_loop(
     user_query: str,
     tool_set_name: str,
     max_iterations: int = 5,
-) -> Tuple[Dict[str, Any], float]:
+) -> Tuple[List[Trajectory], float]:
     """
     Run the React agent loop until completion or max iterations.
 
@@ -76,9 +92,9 @@ def run_react_loop(
         max_iterations: Maximum number of iterations
 
     Returns:
-        Tuple of (trajectory dictionary, execution time)
+        Tuple of (list of trajectories, execution time)
     """
-    trajectory = {}
+    trajectories: List[Trajectory] = []
     current_iteration = 1
     start_time = time.time()
 
@@ -93,17 +109,14 @@ def run_react_loop(
         logger.debug(f"Iteration {current_iteration}/{max_iterations}")
 
         # Call ReactAgent
-        result = react_agent(
-            trajectory=trajectory,
+        trajectory = react_agent(
+            trajectories=trajectories,
             current_iteration=current_iteration,
             user_query=user_query,
         )
-
-        # Extract values from ReactAgentResult
-        trajectory = result.trajectory
-        tool_name = result.tool_name
-        tool_args = result.tool_args
-
+        
+        # Add the new trajectory to the list
+        trajectories.append(trajectory)
         # Save ReactAgent history only if DSPY debug is enabled
         if dspy_debug_enabled:
             try:
@@ -117,36 +130,43 @@ def run_react_loop(
             except Exception as e:
                 logger.warning(f"Failed to save ReactAgent history: {e}")
 
-        logger.debug(f"Tool selected: {tool_name}")
-        logger.debug(f"Tool args: {tool_args}")
+        logger.debug(f"Tool selected: {trajectory.tool_name}")
+        logger.debug(f"Tool args: {trajectory.tool_args}")
 
         # Check if we're done
-        if tool_name == "finish":
+        if trajectory.check_is_finish():
             logger.debug("Agent selected 'finish' - task complete")
-            # Add final observation for finish
-            trajectory[f"observation_{current_iteration-1}"] = "Completed."
             break
 
         # Execute the tool if it's not finish
-        if tool_name in tool_registry.get_all_tools():
+        if trajectory.tool_name in tool_registry.get_all_tools():
             try:
-                tool = tool_registry.get_tool(tool_name)
-                logger.debug(f"Executing tool: {tool_name}")
-                result = tool.execute(**tool_args)
-                logger.debug(f"Tool result: {result}")
-
-                # Add tool result to trajectory
-                idx = current_iteration - 1
-                trajectory[f"observation_{idx}"] = result
-
+                tool = tool_registry.get_tool(trajectory.tool_name)
+                logger.debug(f"Executing tool: {trajectory.tool_name}")
+                
+                # Ensure numeric fields are properly typed
+                # This handles cases where DSPy might return numeric values as strings
+                tool_args = trajectory.tool_args.copy()
+                if 'latitude' in tool_args and isinstance(tool_args['latitude'], str):
+                    try:
+                        tool_args['latitude'] = float(tool_args['latitude'])
+                    except ValueError:
+                        pass  # Keep as string if conversion fails
+                if 'longitude' in tool_args and isinstance(tool_args['longitude'], str):
+                    try:
+                        tool_args['longitude'] = float(tool_args['longitude'])
+                    except ValueError:
+                        pass  # Keep as string if conversion fails
+                
+                #save tool execution to the trajectory observation
+                trajectory.observation = tool.execute(**tool_args)
+                logger.debug(f"Tool result: {trajectory.observation}")
             except Exception as e:
                 logger.error(f"Tool execution error: {e}", exc_info=True)
-                trajectory[f"observation_{current_iteration-1}"] = f"Error: {e}"
+                trajectory.observation = f"Error: {e}"
         else:
-            logger.warning(f"Unknown tool: {tool_name}")
-            trajectory[
-                f"observation_{current_iteration-1}"
-            ] = f"Error: Unknown tool {tool_name}"
+            logger.warning(f"Unknown tool: {trajectory.tool_name}")
+            trajectory.observation = f"Error: Unknown tool {trajectory.tool_name}"
 
         current_iteration += 1
 
@@ -154,17 +174,17 @@ def run_react_loop(
         logger.warning(f"Reached maximum iterations ({max_iterations})")
 
     execution_time = time.time() - start_time
-    return trajectory, execution_time
+    return trajectories, execution_time
 
 
 def extract_final_answer(
-    trajectory: Dict[str, Any], user_query: str, tool_set_name: str
+    trajectories: List[Trajectory], user_query: str, tool_set_name: str
 ) -> Tuple[str, str]:
     """
-    Extract the final answer from the trajectory using the Extract Agent.
+    Extract the final answer from the trajectories using the Extract Agent.
 
     Args:
-        trajectory: The complete trajectory from the React loop
+        trajectories: The complete list of trajectories from the React loop
         user_query: The original user query
         tool_set_name: Name of the tool set being used
 
@@ -176,8 +196,8 @@ def extract_final_answer(
     # Check if DEMO debug mode is enabled
     demo_debug_enabled = os.getenv("DEMO_DEBUG", "false").lower() == "true"
 
-    logger.debug("Extracting final answer from trajectory")
-    logger.debug(f"Trajectory keys: {list(trajectory.keys())}")
+    logger.debug("Extracting final answer from trajectories")
+    logger.debug(f"Summary: {summarize_trajectories(trajectories)}")
 
     # Create a signature for answer extraction
     class AnswerExtractionSignature(dspy.Signature):
@@ -191,9 +211,9 @@ def extract_final_answer(
     # Initialize Extract Agent
     extract_agent = ReactExtract(signature=AnswerExtractionSignature)
 
-    # Extract answer from trajectory
+    # Extract answer from trajectories
     logger.debug("Calling Extract Agent")
-    result = extract_agent(trajectory=trajectory, user_query=user_query)
+    result = extract_agent(trajectories=trajectories, user_query=user_query)
 
     # Save ExtractAgent history only if DSPY debug is enabled
     if demo_debug_enabled:
@@ -214,7 +234,7 @@ def extract_final_answer(
 
 def run_single_test_case(
     test_case, tool_registry, tool_set_name: str, console: ConsoleFormatter
-) -> Dict[str, Any]:
+) -> TestCaseResult:
     """Run a single test case and return results."""
     from agentic_loop.react_agent import ReactAgent
 
@@ -225,12 +245,6 @@ def run_single_test_case(
     tool_set_signature = tool_registry.get_react_signature()
 
     if tool_set_signature:
-        # Format the signature's docstring with current date if needed
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        if hasattr(tool_set_signature, "__doc__") and tool_set_signature.__doc__:
-            tool_set_signature.__doc__ = tool_set_signature.__doc__.format(
-                current_date=current_date
-            )
         ReactSignature = tool_set_signature
     else:
         # Fallback to generic signature
@@ -246,7 +260,7 @@ def run_single_test_case(
     logger.info(console.section_header("🔄 React Agent Execution", char="-", width=60))
 
     try:
-        trajectory, react_time = run_react_loop(
+        trajectories, react_time = run_react_loop(
             react_agent=react_agent,
             tool_registry=tool_registry,
             user_query=test_case.request,
@@ -256,13 +270,13 @@ def run_single_test_case(
 
         # Extract tools used
         tools_used = []
-        for key in sorted(trajectory.keys()):
-            if key.startswith("tool_name_") and trajectory[key] != "finish":
-                tools_used.append(trajectory[key])
+        for traj in trajectories:
+            if not traj.is_finish:
+                tools_used.append(traj.tool_name)
 
         logger.info(f"✓ React loop completed in {react_time:.2f}s")
         logger.info(
-            f"  Iterations: {len([k for k in trajectory.keys() if k.startswith('thought_')])}"
+            f"  Iterations: {len(trajectories)}"
         )
         logger.info(f"  Tools used: {', '.join(tools_used) if tools_used else 'None'}")
 
@@ -271,40 +285,41 @@ def run_single_test_case(
             f"\n{console.section_header('📝 Extract Agent', char='-', width=60)}"
         )
         answer, reasoning = extract_final_answer(
-            trajectory, test_case.request, tool_set_name
+            trajectories, test_case.request, tool_set_name
         )
 
         logger.info("✓ Answer extracted successfully")
 
-        return {
-            "status": ActivityStatus.SUCCESS,
-            "trajectory": trajectory,
-            "tools_used": tools_used,
-            "execution_time": react_time,
-            "answer": answer,
-            "reasoning": reasoning,
-            "expected_tools": test_case.expected_tools,
-            "tools_match": set(tools_used) == set(test_case.expected_tools),
-        }
+        return TestCaseResult(
+            status=ActivityStatus.SUCCESS,
+            trajectories=trajectories,
+            tools_used=tools_used,
+            execution_time=react_time,
+            answer=answer,
+            reasoning=reasoning,
+            expected_tools=test_case.expected_tools,
+            tools_match=set(tools_used) == set(test_case.expected_tools),
+        )
 
     except Exception as e:
         logger.error(f"Test case failed: {e}", exc_info=True)
-        return {
-            "status": ActivityStatus.ERROR,
-            "error": str(e),
-            "execution_time": 0,
-            "tools_used": [],
-            "expected_tools": test_case.expected_tools,
-            "tools_match": False,
-        }
+        return TestCaseResult(
+            status=ActivityStatus.ERROR,
+            error=str(e),
+            execution_time=0,
+            tools_used=[],
+            expected_tools=test_case.expected_tools,
+            tools_match=False,
+        )
 
 
 def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
     """Run test cases for a tool set."""
     console = ConsoleFormatter()
     
-    # Load environment variables from worker.env
-    load_dotenv("worker.env", override=True)
+    # Load environment variables from agentic_loop/.env
+    local_env = Path(__file__).parent / ".env"
+    load_dotenv(local_env)
 
     # Check if DSPY debug mode is enabled
     dspy_debug_enabled = os.getenv("DSPY_DEBUG", "false").lower() == "true"
@@ -319,8 +334,10 @@ def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
     llm_config = LLMConfig.from_env()
     setup_llm(llm_config)
 
-    # Create tool registry
-    registry = create_tool_set_registry(tool_set_name)
+    # Create tool registry - check TOOLS_MOCK environment variable
+    tools_mock = os.getenv("TOOLS_MOCK", "true").lower() == "true"
+    logger.info(f"Using {'mock' if tools_mock else 'real'} results (TOOLS_MOCK={os.getenv('TOOLS_MOCK', 'true')})")
+    registry = create_tool_set_registry(tool_set_name, mock_results=tools_mock)
 
     # Get all test cases from the registry
     test_cases = registry.get_all_test_cases()
@@ -360,33 +377,33 @@ def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
         # Display results
         logger.info(f"\n{console.section_header('📊 Results', char='-', width=60)}")
 
-        if result["status"] == ActivityStatus.SUCCESS:
+        if result.status == ActivityStatus.SUCCESS:
             successful_tests += 1
-            total_time += result["execution_time"]
+            total_time += result.execution_time
 
             # Check if tools match expected
-            if result["tools_match"]:
+            if result.tools_match:
                 logger.info(console.success_message("Tools matched expected"))
             else:
                 logger.warning(
                     console.warning_message(
-                        f"Tools mismatch - Expected: {', '.join(result['expected_tools'])}, Got: {', '.join(result['tools_used'])}"
+                        f"Tools mismatch - Expected: {', '.join(result.expected_tools)}, Got: {', '.join(result.tools_used)}"
                     )
                 )
 
-            logger.info(f"Execution time: {result['execution_time']:.2f}s")
+            logger.info(f"Execution time: {result.execution_time:.2f}s")
 
             # Final answer
             logger.info(
                 f"\n{console.section_header('🎯 Final Answer', char='-', width=60)}"
             )
-            logger.info(result["answer"])
+            logger.info(result.answer)
 
-            if result["reasoning"] and logger.level == logging.DEBUG:
+            if result.reasoning and logger.level == logging.DEBUG:
                 logger.debug(
                     f"\n{console.section_header('💭 Reasoning', char='-', width=60)}"
                 )
-                logger.debug(result["reasoning"])
+                logger.debug(result.reasoning)
 
             # Save history if DSPY debug is enabled
             if dspy_debug_enabled:
@@ -403,7 +420,7 @@ def run_test_cases(tool_set_name: str, test_case_index: Optional[int] = None):
                 except Exception as e:
                     logger.warning(f"Failed to save full session history: {e}")
         else:
-            logger.error(console.error_message(f"Test failed: {result['error']}"))
+            logger.error(console.error_message(f"Test failed: {result.error}"))
 
         if i < len(test_cases):
             logger.info(f"\n{'='*80}\n")
@@ -429,6 +446,9 @@ Examples:
   poetry run python agentic_loop/demo_react_agent.py agriculture  # Run all agriculture test cases
   poetry run python agentic_loop/demo_react_agent.py agriculture 2    # Run only agriculture test case 2
   poetry run python agentic_loop/demo_react_agent.py treasure_hunt # Run treasure hunt test cases
+  
+  # Use TOOLS_MOCK environment variable to control mock/real mode:
+  TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture  # Run with real API calls
         """,
     )
 
@@ -436,7 +456,7 @@ Examples:
     parser.add_argument(
         "tool_set_or_index",
         nargs="?",
-        default="agriculture",
+        default=AgricultureToolSet.NAME,
         help="Tool set name (agriculture, treasure_hunt, etc.) or test case index (1, 2, 3...)",
     )
 
@@ -455,6 +475,7 @@ Examples:
         help="Set the logging level (default: INFO)",
     )
 
+
     args = parser.parse_args()
 
     # Check if DSPY_DEBUG is enabled and override log level if it is
@@ -466,7 +487,7 @@ Examples:
         setup_logging(args.log_level)
 
     # Determine if first argument is a tool set or test case index
-    tool_set_name = "agriculture"  # default
+    tool_set_name = AgricultureToolSet.NAME # default
     test_case_index = None
 
     # Check if first argument is a number

@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 from utils.api_client import DurableAgentAPIClient
+from models.trajectory import Trajectory
 
 
 class MCPWeatherFlowTest:
@@ -39,27 +40,25 @@ class MCPWeatherFlowTest:
             # Send request
             response = await client.chat(request, user_name=user_name)
             
-            # Extract trajectory
+            # Extract trajectories
             last_response = response.get("last_response", {})
             if isinstance(last_response, dict):
-                trajectory = last_response.get("trajectory", {})
+                trajectories = last_response.get("trajectories", [])
                 message = last_response.get("message", "")
             else:
                 print("❌ Unexpected response format")
                 return False
             
-            # Parse trajectory steps
+            # Convert trajectory objects to steps for display
             steps = []
-            i = 0
-            while f"thought_{i}" in trajectory:
+            for traj in trajectories:
                 step = {
-                    "thought": trajectory.get(f"thought_{i}", ""),
-                    "tool_name": trajectory.get(f"tool_name_{i}", ""),
-                    "tool_args": trajectory.get(f"tool_args_{i}", {}),
-                    "observation": trajectory.get(f"observation_{i}", "")
+                    "thought": traj.thought,
+                    "tool_name": traj.tool_name,
+                    "tool_args": traj.tool_args,
+                    "observation": traj.observation or ""
                 }
                 steps.append(step)
-                i += 1
             
             # Print each step
             for idx, step in enumerate(steps):
@@ -119,20 +118,20 @@ class MCPWeatherFlowTest:
             last_response = response.get("last_response", {})
             
             if isinstance(last_response, dict):
-                trajectory = last_response.get("trajectory", {})
+                trajectories = last_response.get("trajectories", [])
                 
                 # Check first tool used
-                tool_name = trajectory.get("tool_name_0", "")
-                if tool_name == "get_agricultural_conditions":
+                if trajectories and trajectories[0].tool_name == "get_agricultural_conditions":
                     print("✅ Consolidated agricultural conditions tool used!")
                     
                     # Check for crop_type in args
-                    tool_args = trajectory.get("tool_args_0", {})
+                    tool_args = trajectories[0].tool_args
                     if "crop_type" in tool_args and "corn" in str(tool_args.get("crop_type", "")).lower():
                         print("✅ Crop type (corn) correctly passed!")
                     
                     return True
                 else:
+                    tool_name = trajectories[0].tool_name if trajectories else "None"
                     print(f"❌ Expected get_agricultural_conditions but got: {tool_name}")
                     return False
             
@@ -157,20 +156,20 @@ class MCPWeatherFlowTest:
             last_response = response.get("last_response", {})
             
             if isinstance(last_response, dict):
-                trajectory = last_response.get("trajectory", {})
+                trajectories = last_response.get("trajectories", [])
                 
                 # Check first tool used
-                tool_name = trajectory.get("tool_name_0", "")
-                if tool_name == "get_historical_weather":
+                if trajectories and trajectories[0].tool_name == "get_historical_weather":
                     print("✅ Consolidated historical weather tool used!")
                     
                     # Check date args
-                    tool_args = trajectory.get("tool_args_0", {})
+                    tool_args = trajectories[0].tool_args
                     if "start_date" in tool_args and "end_date" in tool_args:
                         print(f"✅ Date range passed: {tool_args['start_date']} to {tool_args['end_date']}")
                     
                     return True
                 else:
+                    tool_name = trajectories[0].tool_name if trajectories else "None"
                     print(f"❌ Expected get_historical_weather but got: {tool_name}")
                     return False
             

@@ -1,5 +1,6 @@
 """Central registry for all tools adapted for agentic loop integration."""
 import time
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Type
 
 import dspy
@@ -156,12 +157,23 @@ class ToolRegistry:
     def get_react_signature(self) -> Optional[Type[dspy.Signature]]:
         """
         Get the React signature from the current tool set.
+        
+        If the signature has a docstring with {current_date} placeholder,
+        it will be formatted with today's date in YYYY-MM-DD format.
 
         Returns:
             Optional[Type[dspy.Signature]]: The React signature class, or None if no tool set or default behavior
         """
         if self._tool_set:
-            return self._tool_set.get_react_signature()
+            signature = self._tool_set.get_react_signature()
+            if signature:
+                # Format the signature's docstring with current date if needed
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                if hasattr(signature, "__doc__") and signature.__doc__:
+                    signature.__doc__ = signature.__doc__.format(
+                        current_date=current_date
+                    )
+            return signature
         return None
 
     def get_extract_signature(self) -> Optional[Type[dspy.Signature]]:

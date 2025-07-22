@@ -1,9 +1,10 @@
 """Activity that integrates ExtractAgent with Temporal workflows."""
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import dspy
 from temporalio import activity
 
+from models.trajectory import Trajectory
 from models.types import ActivityStatus, ExtractAgentActivityResult
 
 
@@ -32,13 +33,13 @@ class ExtractAgentActivity:
 
     @activity.defn
     async def run_extract_agent(
-        self, trajectory: Dict[str, Any], user_query: str, user_name: str = "anonymous"
+        self, trajectories: List[Trajectory], user_query: str, user_name: str = "anonymous"
     ) -> ExtractAgentActivityResult:
         """
         Activity that runs the ExtractAgent to synthesize a final answer from trajectory.
 
         Args:
-            trajectory: The complete agent execution trajectory
+            trajectories: The list of trajectory steps from the agent execution
             user_query: The original user's query
             user_name: The name of the user making the request
 
@@ -71,7 +72,7 @@ class ExtractAgentActivity:
             # Run the extract agent to synthesize the final answer
             # Following the exact pattern from demo_react_agent.extract_final_answer
             extract_result = self._extract_agent(
-                trajectory=trajectory, user_query=user_query
+                trajectories=trajectories, user_query=user_query
             )
 
             # Extract the answer from the result (reasoning is not in our signature)
@@ -89,7 +90,7 @@ class ExtractAgentActivity:
                 status=ActivityStatus.SUCCESS,
                 answer=answer,
                 reasoning=reasoning,
-                trajectory=trajectory,
+                trajectories=trajectories,
             )
 
         except Exception as e:
@@ -113,6 +114,6 @@ class ExtractAgentActivity:
 
             return ExtractAgentActivityResult(
                 status=ActivityStatus.ERROR,
-                trajectory=trajectory,
+                trajectories=trajectories,
                 error=str(e),
             )

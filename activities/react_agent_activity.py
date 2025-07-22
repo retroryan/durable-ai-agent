@@ -1,8 +1,9 @@
 """Activity that integrates ReactAgent with Temporal workflows."""
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from temporalio import activity
 
+from models.trajectory import Trajectory
 from models.types import ActivityStatus, ReactAgentActivityResult
 
 
@@ -21,22 +22,22 @@ class ReactAgentActivity:
     @activity.defn
     async def run_react_agent(
         self, 
-        user_query: str, 
+        prompt: str,
         current_iteration: int, 
-        trajectory: Dict[str, Any],
+        trajectories: List[Trajectory],
         user_name: str = "anonymous"
     ) -> ReactAgentActivityResult:
         """
         Activity that runs the ReactAgent for one iteration.
 
         Args:
-            user_query: The user's query
+            prompt: The user's prompt
             current_iteration: The current iteration number
-            trajectory: The accumulated trajectory from previous iterations
+            trajectories: The list of trajectory steps from previous iterations
             user_name: The name of the user making the request
 
         Returns:
-            ReactAgentActivityResult with status, trajectory, tool_name, and optional error
+            ReactAgentActivityResult with status, trajectories, current_trajectory, and optional error
         """
         # Get activity info for context
         info = activity.info()
@@ -46,118 +47,88 @@ class ReactAgentActivity:
         # Log the activity execution with user context
         activity.logger.info(
             f"[ReactAgentActivity Activity] Starting execution - Activity ID: {activity_id}, "
-            f"Workflow ID: {workflow_id}, User: '{user_name}'"
+            f"Workflow ID: {workflow_id}, User: '{user_name}' Prompt: '{prompt}'"
         )
-        activity.logger.info(
-            f"[ReactAgentActivity Activity] User query: '{user_query}'"
-        )
-        activity.logger.debug(
-            f"[ReactAgentActivity Activity] Full activity info - Task: {info.task_token}, "
-            f"Attempt: {info.attempt}"
-        )
-
         try:
             activity.logger.info(
-                f"[ReactAgentActivity Activity] Executing React iteration for query: '{user_query}'"
+                f"[ReactAgentActivity Activity] Executing React iteration for prompt: '{prompt}'"
             )
 
             # Run the react agent for one iteration
-            trajectory, tool_name, tool_args = self._execute_react_iteration(
-                user_query, current_iteration, trajectory
+            current_trajectory = self._execute_react_iteration(
+                prompt, current_iteration, trajectories
             )
+            
+            # Add the new trajectory to the list
+            trajectories.append(current_trajectory)
 
             activity.logger.info(
-                f"[ReactAgentActivity Activity] React iteration completed - Trajectory: {trajectory}, "
-                f"Tool Name: {tool_name}"
-            )
-            activity.logger.debug(
-                f"[ReactAgentActivity Activity] Full trajectory: {trajectory}"
+                f"[ReactAgentActivity Activity] React iteration completed - "
+                f"Tool Name: {current_trajectory.tool_name}   -   "
+                f"Current trajectory: {current_trajectory}"
             )
 
             return ReactAgentActivityResult(
                 status=ActivityStatus.SUCCESS,
-                trajectory=trajectory,
-                tool_name=tool_name,
-                tool_args=tool_args,
+                trajectories=trajectories,
             )
 
         except Exception as e:
             activity.logger.error(
                 f"[ReactAgentActivity Activity] Error during execution: {str(e)}"
             )
-            activity.logger.exception(
-                f"[ReactAgentActivity Activity] Full exception details:"
+            # Create an error trajectory
+            error_trajectory = Trajectory(
+                iteration=current_iteration - 1,
+                thought="Error occurred during React agent execution",
+                tool_name="error",
+                tool_args={},
+                error=str(e)
             )
-
-            # Extract display name for error message too
-            display_name = (
-                user_name.split("_")[0] + "_" + user_name.split("_")[1]
-                if "_" in user_name
-                else user_name
-            )
-
-            activity.logger.error(
-                f"[ReactAgentActivity Activity] Returning error result for user '{display_name}'"
-            )
-
+            
             return ReactAgentActivityResult(
                 status=ActivityStatus.ERROR,
-                trajectory={},
-                tool_name="",
-                user_name=display_name,
+                trajectories=trajectories + [error_trajectory],
+                user_name=user_name,
                 error=str(e),
             )
 
     def _execute_react_iteration(
-        self, user_query: str, current_iteration: int, trajectory: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
+        self, prompt: str, current_iteration: int, trajectories: List[Trajectory]
+    ) -> Trajectory:
         """
         Execute a single React agent iteration.
 
         Args:
-            user_query: The user's question
+            prompt: The user's prompt
             current_iteration: The current iteration number
-            trajectory: The accumulated trajectory from previous iterations
+            trajectories: The list of trajectory steps from previous iterations
 
         Returns:
-            Tuple[Dict[str, Any], str, Dict[str, Any]]: (trajectory, tool_name, tool_args)
+            Trajectory: The trajectory for this iteration
         """
         activity.logger.info(
-            f"[ReactAgentActivity] _execute_react_iteration called with query: '{user_query}', "
-            f"iteration: {current_iteration}, trajectory keys: {list(trajectory.keys())}"
-        )
-        activity.logger.info(
-            f"[ReactAgentActivity] About to call self._react_agent - Type: {type(self._react_agent)}, "
-            f"Iteration: {current_iteration}"
+            f"[ReactAgentActivity] _execute_react_iteration called with query: '{prompt}', "
+            f"iteration: {current_iteration}, trajectories count: {len(trajectories)}"
         )
 
         try:
             # Add logging before the actual call
             activity.logger.info(
                 f"[ReactAgentActivity] Calling _react_agent with params - "
-                f"trajectory: {trajectory}, iteration: {current_iteration}, query: '{user_query}'"
+                f"trajectories count: {len(trajectories)}, iteration: {current_iteration}, query: '{prompt}'"
             )
 
-            # Call ReactAgent for one iteration - returns the same types as forward method
-            result = self._react_agent(
-                trajectory=trajectory,
+            # Call ReactAgent for one iteration - returns a Trajectory
+            trajectory = self._react_agent(
+                trajectories=trajectories,
                 current_iteration=current_iteration,
-                user_query=user_query,
+                user_query=prompt,
             )
 
             activity.logger.info(
-                f"[ReactAgentActivity] _react_agent returned - Type: {type(result)}, "
-                f"Length: {len(result) if isinstance(result, tuple) else 'N/A'}"
-            )
-
-            # Extract trajectory, tool_name and tool_args from ReactAgentResult
-            trajectory = result.trajectory
-            tool_name = result.tool_name
-            tool_args = result.tool_args
-
-            activity.logger.info(
-                f"[ReactAgentActivity] Unpacked results - trajectory: {trajectory}, "
-                f"Tool Name: {tool_name}, Tool Args: {tool_args}"
+                f"[ReactAgentActivity] _react_agent returned Trajectory - "
+                f"Tool: {trajectory.tool_name}, Iteration: {trajectory.iteration}"
             )
 
         except Exception as e:
@@ -171,4 +142,4 @@ class ReactAgentActivity:
             f"[ReactAgentActivity] _execute_react_iteration completed successfully"
         )
 
-        return trajectory, tool_name, tool_args
+        return trajectory

@@ -189,22 +189,22 @@ class WorkflowService:
             )
             return None
     
-    async def get_ai_workflow_trajectory(self, workflow_id: str) -> Optional[dict]:
+    async def get_ai_workflow_trajectories(self, workflow_id: str) -> Optional[list]:
         """
-        Get the trajectory from an AgenticAIWorkflow.
+        Get the trajectories from an AgenticAIWorkflow.
         
         Args:
             workflow_id: The workflow ID
             
         Returns:
-            Trajectory dictionary or None if not found
+            List of trajectories or None if not found
         """
         try:
             handle = self.client.get_workflow_handle(workflow_id)
-            return await handle.query(AgenticAIWorkflow.get_trajectory)
+            return await handle.query(AgenticAIWorkflow.get_trajectories)
         except Exception as e:
             logger.error(
-                f"Error getting AI workflow trajectory for workflow_id: {workflow_id}, error: {e}"
+                f"Error getting AI workflow trajectories for workflow_id: {workflow_id}, error: {e}"
             )
             return None
     

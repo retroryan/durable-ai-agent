@@ -192,7 +192,7 @@ The system now includes MCP-enabled tools that seamlessly integrate with the age
 These tools:
 - Coexist with traditional tools in the tool registry
 - Are automatically routed to the MCPExecutionActivity
-- Support mock mode via `TOOLS_MOCK=true` environment variable
+- Support mock mode via the tool registry configuration
 - Provide the same functionality as traditional tools but through MCP servers
 
 ### Proxy Architecture

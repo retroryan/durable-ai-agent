@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from models.types import MCPConfig
 from models.tool_definitions import MCPServerDefinition
 from shared.tool_utils.mcp_tool import MCPTool
+from tools.mcp_utils import execute_mcp_sync
 
 
 class ForecastRequest(BaseModel):
@@ -53,7 +54,7 @@ class ForecastRequest(BaseModel):
 
 class WeatherForecastTool(MCPTool):
     NAME: ClassVar[str] = "get_weather_forecast"
-    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast"
+    MODULE: ClassVar[str] = "tools.agriculture.weather_forecast"
     is_mcp: ClassVar[bool] = True
 
     description: str = (
@@ -72,53 +73,14 @@ class WeatherForecastTool(MCPTool):
 
     def execute(self, location: Optional[str] = None, latitude: Optional[float] = None, 
                 longitude: Optional[float] = None, days: int = 7) -> str:
-        # Only used in mock mode for testing
-        if self.mock_results:
-            # For mock results, prefer coordinates if available
-            if latitude is not None and longitude is not None:
-                return self._mock_results(latitude, longitude, days)
-            elif location:
-                # Mock geocoding for common locations
-                coords = self._mock_geocode(location)
-                return self._mock_results(coords[0], coords[1], days)
-            else:
-                raise ValueError("Either location or coordinates required")
-        else:
-            # Real execution happens via MCP in ToolExecutionActivity
-            raise RuntimeError("MCP tools should be executed via activity")
-    
-    def _mock_geocode(self, location: str) -> tuple[float, float]:
-        """Mock geocoding for common locations."""
-        mock_coords = {
-            "new york": (40.7128, -74.0060),
-            "chicago": (41.8781, -87.6298),
-            "los angeles": (34.0522, -118.2437),
-            "sydney": (-33.8688, 151.2093),
-            "melbourne": (-37.8136, 144.9631),
-        }
-        location_lower = location.lower()
-        for key, coords in mock_coords.items():
-            if key in location_lower:
-                return coords
-        # Default to NYC if not found
-        return (40.7128, -74.0060)
-
-    def _mock_results(self, latitude: float, longitude: float, days: int = 7) -> str:
-        """Return simple mock weather forecast data."""
-        return f"""Weather Forecast for {latitude:.4f}, {longitude:.4f}
-Location: Location at {latitude:.4f}, {longitude:.4f}
-Forecast Period: {days} days
-
-Current Conditions:
-- Temperature: 20°C
-- Humidity: 65%
-- Wind Speed: 10 km/h
-- Precipitation: 0 mm
-
-Daily Forecast Summary:
-- 2025-01-15: High 23°C, Low 16°C, Precipitation 0mm
-- 2025-01-16: High 24°C, Low 17°C, Precipitation 1.2mm
-- 2025-01-17: High 22°C, Low 15°C, Precipitation 0.5mm"""
+        # Always use MCP execution (MCP server handles mock mode via TOOLS_MOCK env var)
+        return execute_mcp_sync(
+            self,
+            location=location,
+            latitude=latitude,
+            longitude=longitude,
+            days=days
+        )
 
     def get_test_cases(self) -> list[dict]:
         return [

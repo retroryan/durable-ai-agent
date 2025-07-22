@@ -17,11 +17,6 @@ from starlette.responses import JSONResponse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Check for mock mode
-MOCK_MODE = os.getenv("TOOLS_MOCK", "false").lower() == "true"
-if MOCK_MODE:
-    logger.info("🔧 Running forecast server in MOCK MODE - no external API calls will be made")
-
 # Import shared utilities
 try:
     # When running as a script
@@ -32,8 +27,11 @@ try:
         get_daily_params,
         get_hourly_params,
     )
-
     from models import ForecastRequest
+    from mock_weather_utils import (
+        is_mock_mode, resolve_coordinates, create_location_info,
+        MockCoordinates, MockWeatherResponse, DailyWeatherData, CurrentWeatherData
+    )
 except ImportError:
     # When imported as a module
     from .api_utils import (
@@ -44,6 +42,15 @@ except ImportError:
         get_hourly_params,
     )
     from .models import ForecastRequest
+    from .mock_weather_utils import (
+        is_mock_mode, resolve_coordinates, create_location_info,
+        MockCoordinates, MockWeatherResponse, DailyWeatherData, CurrentWeatherData
+    )
+
+# Check for mock mode
+MOCK_MODE = is_mock_mode()
+if MOCK_MODE:
+    logger.info("🔧 Running forecast server in MOCK MODE - no external API calls will be made")
 
 # Initialize FastMCP server
 server = FastMCP(name="openmeteo-forecast")
@@ -56,46 +63,50 @@ async def health_check(request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy", "service": "forecast-server"})
 
 
-def get_mock_forecast(coords: dict, days: int) -> dict:
+def get_mock_forecast(coords: MockCoordinates, days: int) -> dict:
     """Return mock forecast data for testing."""
     from datetime import datetime, timedelta
     
     base_date = datetime.now()
-    daily_data = {
-        "time": [],
-        "temperature_2m_max": [],
-        "temperature_2m_min": [],
-        "precipitation_sum": [],
-        "wind_speed_10m_max": [],
-    }
+    time_list = []
+    temperature_2m_max = []
+    temperature_2m_min = []
+    precipitation_sum = []
+    wind_speed_10m_max = []
     
     for i in range(days):
         date = base_date + timedelta(days=i)
-        daily_data["time"].append(date.strftime("%Y-%m-%d"))
-        daily_data["temperature_2m_max"].append(20 + i * 0.5)
-        daily_data["temperature_2m_min"].append(10 + i * 0.3)
-        daily_data["precipitation_sum"].append(0 if i % 3 else 2.5)
-        daily_data["wind_speed_10m_max"].append(15 + i * 0.2)
+        time_list.append(date.strftime("%Y-%m-%d"))
+        temperature_2m_max.append(20 + i * 0.5)
+        temperature_2m_min.append(10 + i * 0.3)
+        precipitation_sum.append(0 if i % 3 else 2.5)
+        wind_speed_10m_max.append(15 + i * 0.2)
     
-    return {
-        "location_info": {
-            "name": coords.get("name", f"{coords['latitude']:.4f},{coords['longitude']:.4f}"),
-            "coordinates": {
-                "latitude": coords["latitude"],
-                "longitude": coords["longitude"],
-            },
-        },
-        "current": {
-            "temperature_2m": 18.5,
-            "relative_humidity_2m": 65,
-            "precipitation": 0,
-            "weather_code": 0,
-            "wind_speed_10m": 12.5,
-        },
-        "daily": daily_data,
-        "summary": f"Mock weather forecast for {coords.get('name')} ({days} days)",
-        "mock": True,
-    }
+    daily_data = DailyWeatherData(
+        time=time_list,
+        temperature_2m_max=temperature_2m_max,
+        temperature_2m_min=temperature_2m_min,
+        precipitation_sum=precipitation_sum,
+        wind_speed_10m_max=wind_speed_10m_max
+    )
+    
+    current_weather = CurrentWeatherData(
+        temperature_2m=18.5,
+        relative_humidity_2m=65,
+        precipitation=0,
+        weather_code=0,
+        wind_speed_10m=12.5
+    )
+    
+    response = MockWeatherResponse(
+        location_info=create_location_info(coords),
+        current=current_weather,
+        daily=daily_data,
+        summary=f"Mock weather forecast for {coords.name} ({days} days)",
+        mock=True
+    )
+    
+    return response.model_dump()
 
 
 @server.tool
@@ -112,42 +123,30 @@ async def get_weather_forecast(request: ForecastRequest) -> dict:
         Structured forecast data with location info, current conditions, and daily/hourly data
     """
     try:
-        # Pydantic has already validated the request and converted types
-        # Coordinate priority: direct coords > location name
-        if request.latitude is not None and request.longitude is not None:
-            coords = {
-                "latitude": request.latitude,
-                "longitude": request.longitude,
-                "name": request.location
-                or f"{request.latitude:.4f},{request.longitude:.4f}",
-            }
-        elif request.location:
-            # In mock mode, use simple coordinate mapping
-            if MOCK_MODE:
-                # Simple mock coordinates for common locations
-                mock_coords = {
-                    "new york": {"latitude": 40.7128, "longitude": -74.0060, "name": "New York"},
-                    "london": {"latitude": 51.5074, "longitude": -0.1278, "name": "London"},
-                    "san francisco": {"latitude": 37.7749, "longitude": -122.4194, "name": "San Francisco"},
-                    "des moines": {"latitude": 41.5868, "longitude": -93.6250, "name": "Des Moines"},
-                    "ames": {"latitude": 42.0308, "longitude": -93.6319, "name": "Ames"},
-                    "miami": {"latitude": 25.7617, "longitude": -80.1918, "name": "Miami"},
+        # In mock mode, use mock utilities for coordinate resolution
+        if MOCK_MODE:
+            coords = resolve_coordinates(request.location, request.latitude, request.longitude)
+            if not coords:
+                return {
+                    "error": "Either location name or coordinates (latitude, longitude) required"
                 }
-                location_key = request.location.lower().replace(",", "").strip()
-                coords = mock_coords.get(location_key, {
-                    "latitude": 40.7128,
-                    "longitude": -74.0060,
-                    "name": request.location
-                })
-            else:
+        else:
+            # Real mode: use API or provided coordinates
+            if request.latitude is not None and request.longitude is not None:
+                coords = {
+                    "latitude": request.latitude,
+                    "longitude": request.longitude,
+                    "name": request.location or f"{request.latitude:.4f},{request.longitude:.4f}",
+                }
+            elif request.location:
                 coords = await get_coordinates(request.location)
                 if not coords:
                     return {
                         "error": f"Could not find location: {request.location}. Please try a major city name."
                     }
-        else:
-            # This should not happen due to Pydantic validation
-            return {
+            else:
+                # This should not happen due to Pydantic validation
+                return {
                 "error": "Either location name or coordinates (latitude, longitude) required"
             }
 

@@ -26,7 +26,7 @@ This is a Python-based distributed workflow application demonstrating durable AI
 **IMPORTANT: Claude must always follow these goals and principles when working on this codebase.**
 
 
-1. **No Unnecessary Complexity**: Avoid async patterns, complex abstractions, or heavy frameworks
+1. **No Unnecessary Complexity**: Avoid complex abstractions or heavy frameworks. Only use async patterns after discussing with the engineer and getting explicit approval first
 
 ## Key Principles
 
@@ -39,14 +39,14 @@ This is a Python-based distributed workflow application demonstrating durable AI
 
 ## Critical Anti-Patterns to Avoid
 
-**ABSOLUTE WARNING: The following anti-patterns are strictly forbidden in this codebase:**
+**ABSOLUTE WARNING: The following anti-patterns require careful consideration and explicit approval:**
 
-### 1. **Never Mix Async and Sync Code**
-- **FORBIDDEN**: Creating async/sync bridges, wrappers, or adapters
-- **FORBIDDEN**: Using `asyncio.run()`, `loop.run_until_complete()`, or any sync-to-async conversion
-- **FORBIDDEN**: Implementing "compatibility" functions that convert between async and sync
+### 1. **Only Mix Async and Sync Code with Explicit Approval**
+- **REQUIRES APPROVAL**: Creating async/sync bridges, wrappers, or adapters
+- **REQUIRES APPROVAL**: Using `asyncio.run()`, `loop.run_until_complete()`, or any sync-to-async conversion
+- **REQUIRES APPROVAL**: Implementing "compatibility" functions that convert between async and sync
 - **WHY**: DSPy is designed for synchronous-only operation. Mixing paradigms creates complexity and defeats the purpose of this simple demo
-- **INSTEAD**: If you encounter async code, inform the user and ask how they'd like to proceed
+- **INSTEAD**: If you encounter async code, discuss with the engineer and get explicit approval before proceeding
 
 ### 2. **Never Create Legacy Migration or Compatibility Layers**
 - **FORBIDDEN**: Writing code to handle multiple versions of dependencies
@@ -127,7 +127,7 @@ The application follows a microservices architecture with these key components:
    - `ExtractAgent` - Extracts coherent answers from trajectories
 6. **Tools** (`tools/`) - Modular tool implementations
    - `ToolRegistry` - Dynamic tool management system
-   - `precision_agriculture/` - Weather and farming-specific tools
+   - `agriculture/` - Weather and farming-specific tools
 7. **MCP Proxy** (`mcp_proxy/`) - Unified proxy server combining multiple weather services
 
 ### Key Design Patterns
@@ -191,7 +191,7 @@ This provides full transparency and debuggability of the AI's reasoning process.
 
 ### Precision Agriculture Tools
 
-Weather and farming-specific tools in `tools/precision_agriculture/`:
+Weather and farming-specific tools in `tools/agriculture/`:
 - **WeatherForecastTool**: Get weather predictions for locations (traditional)
 - **HistoricalWeatherTool**: Access past weather data (traditional)
 - **AgriculturalWeatherTool**: Get farming-specific weather conditions (traditional)
@@ -278,7 +278,7 @@ When working with MCP (Model Context Protocol) tools:
 4. **Dynamic Tool Names**: Tool names are computed dynamically based on `MCP_USE_PROXY`:
    - When `MCP_USE_PROXY=true` (default): Names are prefixed (e.g., `forecast_get_weather_forecast`)
    - When `MCP_USE_PROXY=false`: Names are unprefixed (e.g., `get_weather_forecast`)
-5. **Mock Mode**: All MCP tools support `TOOLS_MOCK=true` environment variable
+5. **Mock Mode**: Tools can be run in mock mode via the tool registry configuration
 6. **Registration**: MCP tools are registered without `_mcp` suffix
 7. **Routing**: Workflow routes to `ToolExecutionActivity` which handles MCP tools based on `is_mcp`
 8. **No Direct Execution**: MCP tools raise `RuntimeError` if `execute()` is called directly
@@ -287,7 +287,7 @@ Example MCP tool structure:
 ```python
 class WeatherForecastTool(MCPTool):
     NAME: ClassVar[str] = "get_weather_forecast"  # No _mcp suffix
-    MODULE: ClassVar[str] = "tools.precision_agriculture.weather_forecast"
+    MODULE: ClassVar[str] = "tools.agriculture.weather_forecast"
     is_mcp: ClassVar[bool] = True  # Identifies this as an MCP tool
     
     description: str = "Get weather forecast via MCP service"
@@ -303,33 +303,34 @@ class WeatherForecastTool(MCPTool):
 
 ## Critical Architecture Guidelines
 
-### ⚠️ NEVER Mix Async and Sync Code
+### ⚠️ Only Mix Async and Sync Code with Explicit Approval
 
-**ABSOLUTELY FORBIDDEN ANTI-PATTERNS:**
-1. **DO NOT** create sync/async bridges or compatibility layers
-2. **DO NOT** use `asyncio.run()` inside async functions or create nested event loops
-3. **DO NOT** write sync wrappers around async code or vice versa
-4. **DO NOT** attempt to "migrate" between sync and async patterns
-5. **DO NOT** use threading to work around async/sync mismatches
-6. **DO NOT** create legacy compatibility layers
+**ANTI-PATTERNS REQUIRING EXPLICIT APPROVAL:**
+1. **REQUIRES APPROVAL** to create sync/async bridges or compatibility layers
+2. **REQUIRES APPROVAL** to use `asyncio.run()` inside async functions or create nested event loops
+3. **REQUIRES APPROVAL** to write sync wrappers around async code or vice versa
+4. **REQUIRES APPROVAL** to attempt to "migrate" between sync and async patterns
+5. **REQUIRES APPROVAL** to use threading to work around async/sync mismatches
+6. **REQUIRES APPROVAL** to create legacy compatibility layers
 
 **If you encounter a situation where mixing async/sync seems necessary:**
 - **STOP IMMEDIATELY**
-- **ASK THE USER** for clarification on the correct approach
-- **EXPLAIN** why the anti-pattern is problematic
-- **SUGGEST** proper async-only or sync-only alternatives
+- **DISCUSS WITH THE ENGINEER** for clarification on the correct approach
+- **EXPLAIN** why the anti-pattern might be needed
+- **GET EXPLICIT APPROVAL** before implementing any async/sync mixing
+- **SUGGEST** proper async-only or sync-only alternatives when possible
 
-**Examples of what to avoid:**
+**Examples of what requires explicit approval:**
 ```python
-# ❌ NEVER DO THIS
+# ⚠️ REQUIRES EXPLICIT APPROVAL
 def sync_wrapper(async_func):
     return asyncio.run(async_func())
 
-# ❌ NEVER DO THIS
+# ⚠️ REQUIRES EXPLICIT APPROVAL
 async def async_wrapper(sync_func):
     return await asyncio.to_thread(sync_func)
 
-# ❌ NEVER DO THIS
+# ⚠️ REQUIRES EXPLICIT APPROVAL
 class MixedAPI:
     def sync_method(self):
         return asyncio.run(self.async_method())
@@ -338,10 +339,15 @@ class MixedAPI:
         return "data"
 ```
 
-**Correct approach:**
+**Preferred approach (without requiring approval):**
 - Choose either async OR sync for your entire component
 - Use async libraries with async code (e.g., `httpx` instead of `requests`)
 - Use sync libraries with sync code
 - Keep clear boundaries between async and sync domains
 
-This project uses **async patterns throughout** - maintain this consistency!
+**When async/sync mixing might be approved:**
+- Integration with third-party libraries that only offer one paradigm
+- Performance-critical sections requiring specific patterns
+- Gradual migration strategies (with clear plan and timeline)
+
+Always discuss with the engineer before implementing any async/sync mixing patterns!

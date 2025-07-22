@@ -80,7 +80,7 @@ All code has been implemented as specified. The clean replacement approach has b
 
 ### Step 4: Environment Configuration
 - [x] Add `MCP_URL` to worker.env
-- [x] Keep existing `TOOLS_MOCK` for testing mode
+- [x] Remove `TOOLS_MOCK` - mock mode now controlled by tool registry
 - [x] Remove any `USE_MCP_TOOLS` references (tools are always MCP)
 
 ### Step 5: Update Tool Sets
