@@ -1,13 +1,13 @@
 """Service for managing Temporal workflows."""
 import logging
 import uuid
+import asyncio
 from typing import Optional
 
 from temporalio.client import Client, WorkflowHandle
 from temporalio.service import RPCError
 
 from models.types import ActivityStatus, Response, WorkflowState
-from workflows import SimpleAgentWorkflow
 from workflows.agentic_ai_workflow import AgenticAIWorkflow
 
 logger = logging.getLogger(__name__)
@@ -65,27 +65,46 @@ class WorkflowService:
         except Exception:
             handle = None
 
-        # Start new workflow
-        logger.info(f"Starting new workflow: {workflow_id} for user: {user_name}")
-        handle = await self.client.start_workflow(
-            SimpleAgentWorkflow.run,
-            args=[message, user_name],
-            id=workflow_id,
-            task_queue=self.task_queue,
-        )
-
-        # Wait for result
-        result: Response = await handle.result()
-
-        # Get query count
-        query_count = await handle.query(SimpleAgentWorkflow.get_query_count)
-
+        # Check if we have an existing workflow running
+        is_existing = False
+        try:
+            # Try to get existing workflow
+            handle = self.client.get_workflow_handle(workflow_id)
+            description = await handle.describe()
+            if description.status and description.status.name == "RUNNING":
+                logger.info(f"Found running workflow: {workflow_id}")
+                is_existing = True
+                # Send message via signal
+                await handle.signal("prompt", message)
+        except RPCError:
+            # Workflow doesn't exist, will create new one
+            pass
+        
+        if not is_existing:
+            # Start new workflow
+            logger.info(f"Starting new workflow: {workflow_id} for user: {user_name}")
+            handle = await self.client.start_workflow(
+                AgenticAIWorkflow.run,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+            # Send initial message via signal
+            await handle.signal("prompt", message)
+        
+        # Query current state instead of waiting for result
+        await asyncio.sleep(0.5)  # Small delay to allow processing
+        state_data = await handle.query("state")
+        
         # Create workflow state
         state = WorkflowState(
             workflow_id=workflow_id,
-            status=ActivityStatus.COMPLETED,
-            query_count=query_count,
-            last_response=result,
+            status="running" if is_existing else "started",
+            query_count=0,  # AgenticAIWorkflow doesn't track query count
+            last_response=Response(
+                message=state_data.get("last_response", "Processing your request..."),
+                event_count=0,
+                query_count=0
+            ),
         )
 
         return state
@@ -108,9 +127,8 @@ class WorkflowService:
             query_count = 0
             if description.status and description.status.name == "RUNNING":
                 try:
-                    query_count = await handle.query(
-                        SimpleAgentWorkflow.get_query_count
-                    )
+                    # AgenticAIWorkflow doesn't have query count, set to 0
+                    query_count = 0
                 except Exception as e:
                     logger.warning(
                         f"Could not query workflow_id: {workflow_id}, error: {e}"
@@ -144,8 +162,8 @@ class WorkflowService:
             Query count
         """
         try:
-            handle = self.client.get_workflow_handle(workflow_id)
-            return await handle.query(SimpleAgentWorkflow.get_query_count)
+            # AgenticAIWorkflow doesn't track query count
+            return 0
         except Exception as e:
             logger.error(f"Error querying workflow_id: {workflow_id}, error: {e}")
             return 0
@@ -162,7 +180,9 @@ class WorkflowService:
         """
         try:
             handle = self.client.get_workflow_handle(workflow_id)
-            return await handle.query(SimpleAgentWorkflow.get_status)
+            # Query the workflow status from AgenticAIWorkflow
+            status_data = await handle.query("status")
+            return status_data.get("status", "Unknown")
         except Exception as e:
             logger.error(
                 f"Error getting status for workflow_id: {workflow_id}, error: {e}"
@@ -208,6 +228,26 @@ class WorkflowService:
             )
             return None
     
+    async def get_ai_workflow_trajectory(self, workflow_id: str) -> Optional[dict]:
+        """
+        Get the full trajectory data from an AgenticAIWorkflow.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            Dictionary containing trajectory data or None if not found
+        """
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            trajectories = await handle.query("trajectories")
+            return {"trajectories": trajectories} if trajectories else None
+        except Exception as e:
+            logger.error(
+                f"Error getting AI workflow trajectory for workflow_id: {workflow_id}, error: {e}"
+            )
+            return None
+    
     async def get_ai_workflow_tools(self, workflow_id: str) -> Optional[list]:
         """
         Get the list of tools used by an AgenticAIWorkflow.
@@ -226,3 +266,71 @@ class WorkflowService:
                 f"Error getting AI workflow tools for workflow_id: {workflow_id}, error: {e}"
             )
             return None
+    
+    async def send_message_signal(self, workflow_id: str, message: str) -> bool:
+        """
+        Send a message to a running workflow via signal.
+        
+        Args:
+            workflow_id: The workflow ID
+            message: The message to send
+            
+        Returns:
+            True if signal sent successfully, False otherwise
+        """
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            await handle.signal("prompt", message)
+            return True
+        except Exception as e:
+            logger.error(
+                f"Error sending message signal to workflow_id: {workflow_id}, error: {e}"
+            )
+            return False
+    
+    async def end_conversation(self, workflow_id: str) -> Optional[dict]:
+        """
+        End a conversation and get the final state.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            Final conversation state or None if error
+        """
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            await handle.signal("end_chat")
+            # Wait a moment for the workflow to process the signal
+            await asyncio.sleep(0.5)
+            # Get the final result
+            result = await handle.result()
+            return result
+        except Exception as e:
+            logger.error(
+                f"Error ending conversation for workflow_id: {workflow_id}, error: {e}"
+            )
+            return None
+    
+    async def get_conversation_history(self, workflow_id: str) -> Optional[list]:
+        """
+        Get the conversation history from a workflow.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            List of messages or None if not found
+        """
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            return await handle.query("history")
+        except Exception as e:
+            logger.error(
+                f"Error getting conversation history for workflow_id: {workflow_id}, error: {e}"
+            )
+            return None
+    
+    def generate_workflow_id(self) -> str:
+        """Generate a new workflow ID."""
+        return f"durable-agent-{uuid.uuid4()}"

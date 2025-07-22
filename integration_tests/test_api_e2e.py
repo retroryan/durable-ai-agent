@@ -19,13 +19,34 @@ from models.trajectory import Trajectory
 class MCPWeatherFlowTest:
     """Detailed test for consolidated MCP weather tool execution flow."""
     
+    async def wait_for_agent_response(self, client: DurableAgentAPIClient, workflow_id: str, timeout: int = 60) -> bool:
+        """Wait for agent response in conversation history."""
+        max_attempts = timeout // 2
+        for attempt in range(max_attempts):
+            await asyncio.sleep(2)  # Poll every 2 seconds
+            
+            # Get conversation history
+            history_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/history"
+            )
+            history_data = history_response.json()
+            
+            # Check if we have an agent response
+            messages = history_data.get("conversation_history", [])
+            if len(messages) >= 2 and messages[-1].get("role") == "agent":
+                print(f"Got agent response after {(attempt + 1) * 2} seconds")
+                return True
+        
+        print(f"❌ No agent response after {timeout} seconds")
+        return False
+    
     async def test_mcp_forecast_flow(self, client: DurableAgentAPIClient) -> bool:
         """Test the complete weather forecast tool flow (now always MCP)."""
         print("\n🌤️  Testing Consolidated Weather Forecast Tool Flow")
         print("=" * 60)
         
         user_name = f"test_user_{uuid.uuid4().hex[:8]}"
-        request = "weather: What's the weather forecast for Seattle next week?"
+        request = "What's the weather forecast for Seattle next week?"
         
         print(f"User: {user_name}")
         print(f"Request: {request}")
@@ -37,27 +58,59 @@ class MCPWeatherFlowTest:
         print("-" * 60)
         
         try:
-            # Send request
-            response = await client.chat(request, user_name=user_name)
+            # Send request to start workflow
+            initial_response = await client.chat(request, user_name=user_name)
+            workflow_id = initial_response.get("workflow_id")
             
-            # Extract trajectories
-            last_response = response.get("last_response", {})
-            if isinstance(last_response, dict):
-                trajectories = last_response.get("trajectories", [])
-                message = last_response.get("message", "")
-            else:
-                print("❌ Unexpected response format")
+            if not workflow_id:
+                print("❌ No workflow_id in response")
                 return False
+            
+            print(f"Workflow started: {workflow_id}")
+            
+            # Poll for agent response
+            print("Polling for agent response...")
+            if not await self.wait_for_agent_response(client, workflow_id):
+                return False
+            
+            # Get trajectories from API
+            trajectories_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/ai-trajectories"
+            )
+            trajectories_data = trajectories_response.json()
+            # Handle both list and dict response formats
+            if isinstance(trajectories_data, dict):
+                trajectories = trajectories_data.get("trajectories", [])
+            elif isinstance(trajectories_data, list):
+                trajectories = trajectories_data
+            else:
+                trajectories = []
+            
+            # Get conversation history for final message
+            history_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/history"
+            )
+            history_data = history_response.json()
+            messages = history_data.get("conversation_history", [])
+            message = messages[-1].get("content", "") if messages else ""
             
             # Convert trajectory objects to steps for display
             steps = []
             for traj in trajectories:
-                step = {
-                    "thought": traj.thought,
-                    "tool_name": traj.tool_name,
-                    "tool_args": traj.tool_args,
-                    "observation": traj.observation or ""
-                }
+                if isinstance(traj, dict):
+                    step = {
+                        "thought": traj.get("thought", ""),
+                        "tool_name": traj.get("tool_name", ""),
+                        "tool_args": traj.get("tool_args", {}),
+                        "observation": traj.get("observation", "")
+                    }
+                else:
+                    step = {
+                        "thought": traj.thought,
+                        "tool_name": traj.tool_name,
+                        "tool_args": traj.tool_args,
+                        "observation": traj.observation or ""
+                    }
                 steps.append(step)
             
             # Print each step
@@ -109,31 +162,56 @@ class MCPWeatherFlowTest:
         print("=" * 60)
         
         user_name = f"test_user_{uuid.uuid4().hex[:8]}"
-        request = "weather: What are the agricultural conditions in Iowa for corn farming?"
+        request = "What are the agricultural conditions in Iowa for corn farming?"
         
         print(f"Request: {request}")
         
         try:
-            response = await client.chat(request, user_name=user_name)
-            last_response = response.get("last_response", {})
+            # Start workflow
+            initial_response = await client.chat(request, user_name=user_name)
+            workflow_id = initial_response.get("workflow_id")
             
-            if isinstance(last_response, dict):
-                trajectories = last_response.get("trajectories", [])
+            if not workflow_id:
+                print("❌ No workflow_id in response")
+                return False
+            
+            # Poll for agent response
+            if not await self.wait_for_agent_response(client, workflow_id):
+                return False
+            
+            # Get trajectories from API
+            trajectories_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/ai-trajectories"
+            )
+            trajectories_data = trajectories_response.json()
+            # Handle both list and dict response formats
+            if isinstance(trajectories_data, dict):
+                trajectories = trajectories_data.get("trajectories", [])
+            elif isinstance(trajectories_data, list):
+                trajectories = trajectories_data
+            else:
+                trajectories = []
+            
+            # Check first tool used
+            if trajectories:
+                first_traj = trajectories[0]
+                tool_name = first_traj.get("tool_name") if isinstance(first_traj, dict) else first_traj.tool_name
                 
-                # Check first tool used
-                if trajectories and trajectories[0].tool_name == "get_agricultural_conditions":
+                if tool_name == "get_agricultural_conditions":
                     print("✅ Consolidated agricultural conditions tool used!")
                     
                     # Check for crop_type in args
-                    tool_args = trajectories[0].tool_args
+                    tool_args = first_traj.get("tool_args") if isinstance(first_traj, dict) else first_traj.tool_args
                     if "crop_type" in tool_args and "corn" in str(tool_args.get("crop_type", "")).lower():
                         print("✅ Crop type (corn) correctly passed!")
                     
                     return True
                 else:
-                    tool_name = trajectories[0].tool_name if trajectories else "None"
                     print(f"❌ Expected get_agricultural_conditions but got: {tool_name}")
                     return False
+            else:
+                print("❌ No trajectories found")
+                return False
             
             return False
             
@@ -147,31 +225,56 @@ class MCPWeatherFlowTest:
         print("=" * 60)
         
         user_name = f"test_user_{uuid.uuid4().hex[:8]}"
-        request = "weather: What was the weather like in Chicago from 2025-01-01 to 2025-01-07?"
+        request = "What was the weather like in Chicago from 2025-01-01 to 2025-01-07?"
         
         print(f"Request: {request}")
         
         try:
-            response = await client.chat(request, user_name=user_name)
-            last_response = response.get("last_response", {})
+            # Start workflow
+            initial_response = await client.chat(request, user_name=user_name)
+            workflow_id = initial_response.get("workflow_id")
             
-            if isinstance(last_response, dict):
-                trajectories = last_response.get("trajectories", [])
+            if not workflow_id:
+                print("❌ No workflow_id in response")
+                return False
+            
+            # Poll for agent response
+            if not await self.wait_for_agent_response(client, workflow_id):
+                return False
+            
+            # Get trajectories from API
+            trajectories_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/ai-trajectories"
+            )
+            trajectories_data = trajectories_response.json()
+            # Handle both list and dict response formats
+            if isinstance(trajectories_data, dict):
+                trajectories = trajectories_data.get("trajectories", [])
+            elif isinstance(trajectories_data, list):
+                trajectories = trajectories_data
+            else:
+                trajectories = []
+            
+            # Check first tool used
+            if trajectories:
+                first_traj = trajectories[0]
+                tool_name = first_traj.get("tool_name") if isinstance(first_traj, dict) else first_traj.tool_name
                 
-                # Check first tool used
-                if trajectories and trajectories[0].tool_name == "get_historical_weather":
+                if tool_name == "get_historical_weather":
                     print("✅ Consolidated historical weather tool used!")
                     
                     # Check date args
-                    tool_args = trajectories[0].tool_args
+                    tool_args = first_traj.get("tool_args") if isinstance(first_traj, dict) else first_traj.tool_args
                     if "start_date" in tool_args and "end_date" in tool_args:
                         print(f"✅ Date range passed: {tool_args['start_date']} to {tool_args['end_date']}")
                     
                     return True
                 else:
-                    tool_name = trajectories[0].tool_name if trajectories else "None"
                     print(f"❌ Expected get_historical_weather but got: {tool_name}")
                     return False
+            else:
+                print("❌ No trajectories found")
+                return False
             
             return False
             
@@ -217,7 +320,7 @@ async def main():
     test_suite = MCPWeatherFlowTest()
     
     # Check API health
-    if not await client.check_health():
+    if not await client.health_check():
         print("❌ API is not healthy. Make sure services are running.")
         sys.exit(1)
     

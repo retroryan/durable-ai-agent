@@ -393,16 +393,18 @@ async def send_message(workflow_id: str, request: SendMessageRequest):
     try:
         logger.info(f"Sending message to workflow_id: {workflow_id}")
         
-        # Get workflow handle
-        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        # Use workflow service to send message signal
+        success = await workflow_service.send_message_signal(workflow_id, request.message)
         
-        # Signal the workflow
-        await handle.signal("prompt", request.message)
+        if not success:
+            raise HTTPException(status_code=404, detail="Workflow not found or not running")
         
         return SendMessageResponse(
             status="message sent",
             workflow_id=workflow_id
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error sending message to workflow_id: {workflow_id}, error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -417,23 +419,21 @@ async def end_conversation(workflow_id: str):
     try:
         logger.info(f"Ending conversation for workflow_id: {workflow_id}")
         
-        # Get workflow handle
-        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        # Use workflow service to end conversation
+        final_state = await workflow_service.end_conversation(workflow_id)
         
-        # Signal end conversation
-        await handle.signal("end_conversation")
+        if not final_state:
+            raise HTTPException(status_code=404, detail="Workflow not found or not running")
         
-        # Try to query final state
-        try:
-            history = await handle.query("get_conversation_history")
-            message_count = len(history)
-        except:
-            message_count = None
+        # Get message count from final state
+        message_count = len(final_state.get("conversation_history", []))
         
         return EndConversationResponse(
-            status="ending conversation",
+            status="conversation ended",
             final_message_count=message_count
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error ending conversation for workflow_id: {workflow_id}, error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

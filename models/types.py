@@ -143,7 +143,9 @@ class AgenticAIWorkflowState(BaseModel):
     current_iteration: int = Field(default=0, description="Current iteration in React loop")
     tools_used: list[str] = Field(default_factory=list, description="List of tools used")
     execution_time: float = Field(default=0.0, description="Total execution time in seconds")
+    trajectory_keys: list[str] = Field(default_factory=list, description="List of trajectory keys")
     trajectories: List[Trajectory] = Field(default_factory=list, description="List of trajectory steps")
+    trajectory: Optional[dict] = Field(default=None, description="Full trajectory data when requested")
 
 
 class MCPConfig(BaseModel):

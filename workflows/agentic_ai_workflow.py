@@ -6,17 +6,16 @@ from typing import Any, Dict, List, Optional, Tuple, Deque
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-from models.trajectory import Trajectory
-from models.types import (
-    ActivityStatus,
-    ExtractAgentActivityResult,
-    ReactAgentActivityResult,
-    ToolExecutionRequest,
-    ToolExecutionResult,
-    WorkflowStatus, WorkflowSummary, ConversationHistory, Message, MessageRole,
-)
-
 with workflow.unsafe.imports_passed_through():
+    from models.trajectory import Trajectory
+    from models.types import (
+        ActivityStatus,
+        ExtractAgentActivityResult,
+        ReactAgentActivityResult,
+        ToolExecutionRequest,
+        ToolExecutionResult,
+        WorkflowStatus, WorkflowSummary, ConversationHistory, Message, MessageRole,
+    )
     from activities.extract_agent_activity import ExtractAgentActivity
     from activities.react_agent_activity import ReactAgentActivity
     from activities.tool_execution_activity import ToolExecutionActivity
@@ -38,18 +37,21 @@ class AgenticAIWorkflow:
         self.conversation_history: ConversationHistory = []
 
     @workflow.run
-    async def run(self, workflowSummary: WorkflowSummary) -> ConversationHistory:
+    async def run(self, workflowSummary: Optional[WorkflowSummary] = None) -> ConversationHistory:
         """
         Main workflow execution loop.
 
         Args:
-           workflowSummary: Summary of the workflow to initialize state
+           workflowSummary: Optional summary of the workflow to initialize state
 
         Returns:
             ConversationHistory with all messages
         """
-        # Initialize from workflow summary
-        self.user_name = workflowSummary.get("user_name", "default_user")
+        # Initialize from workflow summary if provided
+        if workflowSummary:
+            self.user_name = workflowSummary.user_name if workflowSummary.user_name else "default_user"
+        else:
+            self.user_name = "default_user"
         
         workflow.logger.info(
             f"[AgenticAIWorkflow] Starting workflow for user: {self.user_name}, "
@@ -411,6 +413,18 @@ class AgenticAIWorkflow:
         workflow.logger.info("[AgenticAIWorkflow] Received end_chat signal")
         self.chat_ended = True
 
+    @workflow.query
+    def state(self) -> Dict[str, Any]:
+        """Query handler for current state (compatibility with API service)."""
+        latest_msg = self.get_latest_response()
+        return {
+            "last_response": latest_msg.content if latest_msg else "Processing your request...",
+            "status": self.workflow_status,
+            "conversation_history": self.conversation_history,
+            "pending_prompts": len(self.prompt_queue),
+            "is_processing": self.workflow_status == WorkflowStatus.RUNNING_REACT_LOOP
+        }
+    
     @workflow.query
     def get_conversation_history(self) -> ConversationHistory:
         """Query handler to get the full conversation history."""
