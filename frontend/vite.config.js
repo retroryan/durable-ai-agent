@@ -9,8 +9,7 @@ export default defineConfig({
     proxy: {
       '/chat': 'http://localhost:8000',
       '/workflow': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
-      '/quote': 'http://localhost:8000'
+      '/health': 'http://localhost:8000'
     }
   }
 })

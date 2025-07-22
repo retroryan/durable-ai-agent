@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from datetime import datetime
 
-from models.conversation import Message
+from models.types import Message
 
 
 class SendMessageRequest(BaseModel):

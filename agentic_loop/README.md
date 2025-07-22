@@ -1,5 +1,24 @@
 # Agentic Loop Demo
 
+## Quick Start
+
+```bash
+# 1. Configure your LLM provider in the parent .env file
+#    (see .env.example for examples - e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY, or Ollama settings)
+
+# 2. Start MCP servers locally (in a separate terminal)
+poetry run python scripts/run_mcp_servers.py
+
+# 3. Run the demo
+MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture
+```
+
+That's it! The demo will run with mock weather data. To use real weather data, add `TOOLS_MOCK=false`:
+
+```bash
+MCP_USE_PROXY=false TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
+```
+
 ## What is the Agentic Loop?
 
 The Agentic Loop implements a React (Reason-Act) pattern for intelligent tool selection and execution. It uses DSPy to create a multi-step reasoning system where an AI agent:
@@ -19,21 +38,47 @@ This creates a transparent reasoning trajectory that shows exactly how the AI ar
 
 ### Running the Demo
 
+**Important**: The demo requires:
+1. LLM configuration in your .env file (API keys, provider settings) - see the "DEMO CONFIGURATION SECTION" in .env.example
+2. MCP servers running locally
+
+#### Quick Start
+
 ```bash
-# Run all test cases for agriculture tools (uses TOOLS_MOCK env var, defaults to true)
-poetry run python agentic_loop/demo_react_agent.py agriculture
+# 1. Ensure your .env file has LLM configuration (see .env.example for examples)
+
+# 2. Start MCP servers locally (in a separate terminal)
+poetry run python scripts/run_mcp_servers.py
+
+# The servers will run on:
+# - Forecast server: http://localhost:7778/mcp
+# - Historical server: http://localhost:7779/mcp
+# - Agricultural server: http://localhost:7780/mcp
+
+# 3. Run the demo with environment overrides for local MCP servers
+MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture
+
+# Or to use real weather data:
+MCP_USE_PROXY=false TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
+```
+
+#### Demo Commands
+
+```bash
+# Run all test cases for agriculture tools (with mock data)
+MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture
 
 # Run a specific test case (e.g., test case 2)
-poetry run python agentic_loop/demo_react_agent.py agriculture 2
+MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture 2
 
 # Run with weather tools
-poetry run python agentic_loop/demo_react_agent.py weather
+MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py weather
 
 # Run with real API calls instead of mock results
-TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
+MCP_USE_PROXY=false TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
 
 # Run specific test with real API calls
-TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture 2
+MCP_USE_PROXY=false TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture 2
 ```
 
 **Note**: By default, the demo uses mock results for predictable testing (controlled by `TOOLS_MOCK=true` in the environment). Set `TOOLS_MOCK=false` to make actual API calls to weather services.
@@ -42,48 +87,41 @@ TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture 
 
 The demo uses environment variables to control how weather/agriculture tools operate. These settings only affect the three MCP-based weather tools - other tools in the system are not affected.
 
-#### Two Independent Settings
+#### Key Settings
 
-1. **`MCP_USE_STDIO`** - Controls HOW tools connect to MCP servers
-   - `true`: Use stdio (direct process communication, no Docker needed)
-   - `false`: Use HTTP (requires MCP servers running via Docker OR locally)
-
-2. **`TOOLS_MOCK`** - Controls WHAT DATA tools return
-   - `true`: Return mock/simulated weather data for predictable testing
+1. **`TOOLS_MOCK`** - Controls WHAT DATA tools return
+   - `true`: Return mock/simulated weather data for predictable testing (default)
    - `false`: Make actual API calls to OpenMeteo weather services
 
-These settings are independent - you can use any combination:
-- Stdio + Mock data (fast local testing)
-- Stdio + Real data (real weather without Docker)
-- HTTP + Mock data (test Docker setup with predictable data)
-- HTTP + Real data (full production-like setup)
+2. **`MCP_USE_PROXY`** - Controls which MCP endpoint to use
+   - `true`: Use the unified proxy server (default when using Docker)
+   - `false`: Connect to individual MCP servers directly
+
+3. **`MCP_URL`** - The MCP server URL
+   - Default: `http://localhost:8001/mcp` (proxy)
+   - For individual servers: Use ports 7778, 7779, 7780
 
 #### Quick Start Examples
 
 ```bash
-# Run with environment defaults (or .env file if present)
-poetry run python agentic_loop/demo_react_agent.py agriculture
+# Run with local MCP servers (mock data)
+MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture
 
-# Real weather data via stdio (no Docker needed)
-TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
+# Real weather data with local MCP servers
+MCP_USE_PROXY=false TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
 
-# Use HTTP transport with local servers (no Docker)
-poetry run python scripts/run_mcp_servers.py &  # Start servers in background
-MCP_USE_STDIO=false poetry run python agentic_loop/demo_react_agent.py agriculture
-poetry run python scripts/stop_mcp_servers.py  # Stop servers when done
-
-# Use HTTP transport with Docker proxy
+# Use Docker proxy (mock data)
 docker-compose --profile weather_proxy up -d
-MCP_USE_PROXY=true MCP_URL=http://localhost:8001/mcp MCP_USE_STDIO=false poetry run python agentic_loop/demo_react_agent.py agriculture
+MCP_USE_PROXY=true MCP_URL=http://localhost:8001/mcp poetry run python agentic_loop/demo_react_agent.py agriculture
 
-# Full production-like setup (HTTP + real data with Docker)
+# Full production-like setup (real data with Docker)
 docker-compose --profile weather_proxy up -d
-MCP_USE_PROXY=true MCP_URL=http://localhost:8001/mcp MCP_USE_STDIO=false TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
+MCP_USE_PROXY=true MCP_URL=http://localhost:8001/mcp TOOLS_MOCK=false poetry run python agentic_loop/demo_react_agent.py agriculture
 ```
 
-#### HTTP Server Options
+#### MCP Server Options
 
-When using HTTP transport (`MCP_USE_STDIO=false`), you have two options:
+You have two options for running MCP servers:
 
 1. **Local Servers** (no Docker required):
    ```bash
@@ -91,7 +129,7 @@ When using HTTP transport (`MCP_USE_STDIO=false`), you have two options:
    poetry run python scripts/run_mcp_servers.py
    
    # In another terminal, run the demo
-   MCP_USE_STDIO=false poetry run python agentic_loop/demo_react_agent.py agriculture
+   MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture
    
    # Stop servers when done
    poetry run python scripts/stop_mcp_servers.py
@@ -102,20 +140,9 @@ When using HTTP transport (`MCP_USE_STDIO=false`), you have two options:
    # Start Docker services
    docker-compose --profile weather_proxy up -d
    
-   # Run demo (configure .env or use environment vars)
-   MCP_USE_PROXY=true MCP_URL=http://localhost:8001/mcp MCP_USE_STDIO=false poetry run python agentic_loop/demo_react_agent.py agriculture
+   # Run demo
+   MCP_USE_PROXY=true MCP_URL=http://localhost:8001/mcp poetry run python agentic_loop/demo_react_agent.py agriculture
    ```
-
-#### Using .env File
-
-```bash
-# Copy example configuration
-cp agentic_loop/.env.example agentic_loop/.env
-
-# Edit .env to set your preferred configuration
-# Then just run normally:
-poetry run python agentic_loop/demo_react_agent.py agriculture
-```
 
 ### Available Tool Sets
 

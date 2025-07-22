@@ -13,7 +13,7 @@ from models.types import (
     ReactAgentActivityResult,
     ToolExecutionRequest,
     ToolExecutionResult,
-    WorkflowStatus, WorkflowSummary, ConversationHistory, Message,
+    WorkflowStatus, WorkflowSummary, ConversationHistory, Message, MessageRole,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -35,7 +35,7 @@ class AgenticAIWorkflow:
         self.prompt_queue: Deque[str] = deque()
         self.user_name: str = "default_user"
         self.chat_ended: bool = False
-        self.conversation_history: ConversationHistory = {"messages": []}
+        self.conversation_history: ConversationHistory = []
 
     @workflow.run
     async def run(self, workflowSummary: WorkflowSummary) -> ConversationHistory:
@@ -99,7 +99,7 @@ class AgenticAIWorkflow:
             self.workflow_status = WorkflowStatus.EXTRACTING_ANSWER
             final_answer = await self._extract_final_answer(
                 trajectories=trajectories,
-                user_query=prompt,
+                prompt=prompt,
                 user_name=self.user_name
             )
             
@@ -107,7 +107,12 @@ class AgenticAIWorkflow:
             response_message = self._format_response(final_answer, trajectories)
             
             # Save to conversation history
-            self.conversation_history["messages"]= response_message
+            agent_message = Message(
+                role=MessageRole.AGENT,
+                content=response_message,
+                timestamp=workflow.now()
+            )
+            self.conversation_history.append(agent_message)
             
             # Log summary
             workflow.logger.info(
@@ -118,7 +123,12 @@ class AgenticAIWorkflow:
             
         except Exception as e:
             workflow.logger.error(f"[AgenticAIWorkflow] Error processing prompt: {e}")
-            self.conversation_history["messages"]=  f"Error processing prompt: {e}"
+            error_message = Message(
+                role=MessageRole.AGENT,
+                content=f"Error processing prompt: {e}",
+                timestamp=workflow.now()
+            )
+            self.conversation_history.append(error_message)
             self.workflow_status = WorkflowStatus.FAILED
 
     async def _run_react_loop(
@@ -388,11 +398,12 @@ class AgenticAIWorkflow:
         workflow.logger.info(f"[AgenticAIWorkflow] Received prompt signal: {message}")
         self.prompt_queue.append(message)
         # Add user message to conversation history
-        self.conversation_history["messages"].append({
-            "role": "user",
-            "content": message,
-            "timestamp": workflow.now().isoformat()
-        })
+        user_message = Message(
+            role=MessageRole.USER,
+            content=message,
+            timestamp=workflow.now()
+        )
+        self.conversation_history.append(user_message)
 
     @workflow.signal  
     async def end_chat(self):
@@ -406,11 +417,10 @@ class AgenticAIWorkflow:
         return self.conversation_history
 
     @workflow.query
-    def get_latest_response(self) -> Optional[Dict[str, Any]]:
-        """Get the latest assistant response."""
-        messages = self.conversation_history.get("messages", [])
-        for msg in reversed(messages):
-            if msg.get("role") == "assistant":
+    def get_latest_response(self) -> Optional[Message]:
+        """Get the latest agent response."""
+        for msg in reversed(self.conversation_history):
+            if msg.role == MessageRole.AGENT:
                 return msg
         return None
 
@@ -440,7 +450,7 @@ class AgenticAIWorkflow:
         return {
             "status": self.workflow_status,
             "user_name": self.user_name,
-            "message_count": len(self.conversation_history.get("messages", [])),
+            "message_count": len(self.conversation_history),
             "pending_prompts": len(self.prompt_queue),
             "current_iteration": self.current_iteration,
             "tools_used": self.tools_used,

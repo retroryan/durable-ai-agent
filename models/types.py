@@ -1,5 +1,7 @@
 """Simple data types for the durable AI agent."""
 from typing import Any, Dict, Optional, Union, List, TypeAlias
+from enum import Enum
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -7,12 +9,22 @@ from models.tool_definitions import MCPServerDefinition
 from models.trajectory import Trajectory
 
 
-class Message(BaseModel):
-    """Message in the conversation history."""
-    role: str = Field(description="Role of the message sender (e.g., 'user', 'assistant')")
-    content: str = Field(description="Content of the message")
+class MessageRole(str, Enum):
+    """Fixed message roles with no magic strings."""
+    USER = "user"
+    AGENT = "agent"
+    SYSTEM = "system"
 
-ConversationHistory: TypeAlias = Dict[str, Message]
+
+class Message(BaseModel):
+    """Simple message with enum role."""
+    role: MessageRole
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+ConversationHistory: TypeAlias = List[Message]
 
 
 class Response(BaseModel):

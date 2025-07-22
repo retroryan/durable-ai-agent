@@ -6,7 +6,6 @@ capabilities to the base tool system without breaking existing functionality.
 """
 import os
 from abc import ABC
-from pathlib import Path
 from typing import ClassVar, Optional
 
 from pydantic import Field
@@ -51,73 +50,44 @@ class MCPTool(BaseTool, ABC):
     
     def get_mcp_config(self) -> MCPConfig:
         """
-        Get MCP configuration for this tool with support for both HTTP and stdio.
-        
-        Transport selection:
-        - When MCP_USE_STDIO=true: Use stdio (direct process communication)
-        - Otherwise: Use HTTP transport
+        Get MCP configuration for this tool via HTTP transport.
         
         Tool name resolution:
-        - Stdio mode: Tool names are unprefixed (e.g., "get_weather_forecast")
         - HTTP proxy mode: Tool names are prefixed (e.g., "forecast_get_weather_forecast")
-        - HTTP direct mode: Tool names are unprefixed
+        - HTTP direct mode: Tool names are unprefixed (e.g., "get_weather_forecast")
         
         Returns:
             MCPConfig containing server details and dynamically computed tool name.
         """
-        # Check if we should use stdio transport
-        use_stdio = os.getenv("MCP_USE_STDIO", "false").lower() == "true"
+        # HTTP mode configuration
+        use_proxy = os.getenv("MCP_USE_PROXY", "true").lower() == "true"
         
-        if use_stdio:
-            # Stdio mode: Direct process communication
-            # Find the project root by looking for the mcp_servers directory
-            current_path = Path(__file__).resolve()
-            project_root = current_path.parent.parent.parent  # shared/tool_utils/mcp_tool.py -> project root
-            
-            # Build path to the MCP server script
-            server_script = project_root / "mcp_servers" / f"{self.mcp_server_name}_server.py"
-            
-            return MCPConfig(
-                server_name=self.mcp_server_name,
-                tool_name=self.NAME,  # No prefix for stdio
-                server_definition=MCPServerDefinition(
-                    name=f"{self.mcp_server_name}-stdio",
-                    connection_type="stdio",
-                    command="python",
-                    args=[str(server_script), "--transport", "stdio"],
-                    env=None
-                )
-            )
+        # Compute tool name based on proxy usage
+        if use_proxy:
+            # Proxy mode: FastMCP mount() prefixes tool names with server name
+            tool_name = f"{self.mcp_server_name}_{self.NAME}"
+            url = os.getenv("MCP_URL", "http://weather-proxy:8000/mcp")
         else:
-            # HTTP mode: Original logic
-            use_proxy = os.getenv("MCP_USE_PROXY", "true").lower() == "true"
+            # Direct mode: Use unprefixed tool name and server-specific URL
+            tool_name = self.NAME
+            # Map server names to their direct URLs
+            server_urls = {
+                "forecast": os.getenv("MCP_FORECAST_URL", "http://localhost:7778/mcp"),
+                "historical": os.getenv("MCP_HISTORICAL_URL", "http://localhost:7779/mcp"),
+                "agricultural": os.getenv("MCP_AGRICULTURAL_URL", "http://localhost:7780/mcp"),
+            }
+            # Get the URL for this specific server, fallback to MCP_URL if not found
+            url = server_urls.get(self.mcp_server_name, os.getenv("MCP_URL", "http://localhost:7778/mcp"))
             
-            # Compute tool name based on proxy usage
-            if use_proxy:
-                # Proxy mode: FastMCP mount() prefixes tool names with server name
-                tool_name = f"{self.mcp_server_name}_{self.NAME}"
-                url = os.getenv("MCP_URL", "http://weather-proxy:8000/mcp")
-            else:
-                # Direct mode: Use unprefixed tool name and server-specific URL
-                tool_name = self.NAME
-                # Map server names to their direct URLs
-                server_urls = {
-                    "forecast": os.getenv("MCP_FORECAST_URL", "http://localhost:7778/mcp"),
-                    "historical": os.getenv("MCP_HISTORICAL_URL", "http://localhost:7779/mcp"),
-                    "agricultural": os.getenv("MCP_AGRICULTURAL_URL", "http://localhost:7780/mcp"),
-                }
-                # Get the URL for this specific server, fallback to MCP_URL if not found
-                url = server_urls.get(self.mcp_server_name, os.getenv("MCP_URL", "http://localhost:7778/mcp"))
-                
-            return MCPConfig(
-                server_name=self.mcp_server_name,
-                tool_name=tool_name,
-                server_definition=MCPServerDefinition(
-                    name=f"mcp-{self.mcp_server_name}",
-                    connection_type="http",
-                    url=url
-                )
+        return MCPConfig(
+            server_name=self.mcp_server_name,
+            tool_name=tool_name,
+            server_definition=MCPServerDefinition(
+                name=f"mcp-{self.mcp_server_name}",
+                connection_type="http",
+                url=url
             )
+        )
     
     def execute(self, **kwargs) -> str:
         """
