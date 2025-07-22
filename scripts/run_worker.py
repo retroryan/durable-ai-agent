@@ -32,11 +32,11 @@ async def main():
     llm_config = LLMConfig.from_env()
     setup_llm(llm_config)
 
-    # Create tool registry with mock configuration (default to mock for worker)
+    # Create tool registry with mock configuration from environment
     tool_set_name = os.getenv("TOOL_SET", "agriculture")
-    # Workers default to mock mode for safety and predictability
-    registry = create_tool_set_registry(tool_set_name, mock_results=True)
-    logging.info(f"Tool registry created for tool set: {tool_set_name} (mock_results=True)")
+    tools_mock = os.getenv("TOOLS_MOCK", "true").lower() == "true"
+    registry = create_tool_set_registry(tool_set_name, mock_results=tools_mock)
+    logging.info(f"Tool registry created for tool set: {tool_set_name} (mock_results={tools_mock})")
 
     # Initialize the Agentic React Agent here
     tool_set_signature = registry.get_react_signature()

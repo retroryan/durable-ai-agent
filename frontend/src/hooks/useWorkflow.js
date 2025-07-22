@@ -45,16 +45,21 @@ export function useWorkflow() {
     setMessages(prev => [...prev, userMessage]);
 
     try {
+      console.log('[useWorkflow] Sending message:', messageText, 'workflowId:', workflowId);
+      
       // Send message to API with user name
       const response = await api.sendMessage(messageText, workflowId, userName);
+      console.log('[useWorkflow] API response:', response);
       
       // Update workflow ID if this is the first message
       if (!workflowId && response.workflow_id) {
+        console.log('[useWorkflow] Setting workflow ID:', response.workflow_id);
         setWorkflowId(response.workflow_id);
       }
 
       // Add assistant response if available
       if (response.last_response) {
+        console.log('[useWorkflow] Initial response available:', response.last_response.message);
         const assistantMessage = {
           id: generateId(),
           content: response.last_response.message,
@@ -62,6 +67,8 @@ export function useWorkflow() {
           timestamp: new Date().toISOString()
         };
         setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        console.log('[useWorkflow] No initial response, will poll for updates');
       }
 
       setWorkflowStatus(response.status);
@@ -75,18 +82,22 @@ export function useWorkflow() {
 
   // Poll for workflow status updates
   useEffect(() => {
-    if (!workflowId || !isLoading) {
+    if (!workflowId || workflowStatus === 'completed' || workflowStatus === 'Completed') {
       return;
     }
+
+    console.log('[useWorkflow] Starting polling for workflow:', workflowId);
 
     // Start polling
     pollingIntervalRef.current = setInterval(async () => {
       try {
         const status = await api.getStatus(workflowId);
+        console.log('[useWorkflow] Poll status:', status);
         setWorkflowStatus(status.status);
         
         // If workflow completed and we have a new response, add it
-        if (status.status === 'Completed' && status.last_response) {
+        if ((status.status === 'completed' || status.status === 'Completed') && status.last_response) {
+          console.log('[useWorkflow] Workflow completed with response:', status.last_response.message);
           // Check if we already have this response
           const lastMessage = messages[messages.length - 1];
           if (!lastMessage || lastMessage.content !== status.last_response.message) {
@@ -99,6 +110,8 @@ export function useWorkflow() {
             setMessages(prev => [...prev, assistantMessage]);
           }
           setIsLoading(false);
+        } else if (status.status === 'running' || status.status === 'started') {
+          console.log('[useWorkflow] Workflow still running, continuing to poll...');
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -111,7 +124,7 @@ export function useWorkflow() {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, [workflowId, isLoading, messages]);
+  }, [workflowId, workflowStatus, messages]);
 
   // Reset conversation
   const resetConversation = useCallback(() => {

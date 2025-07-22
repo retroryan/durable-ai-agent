@@ -123,24 +123,61 @@ class WorkflowService:
             handle = self.client.get_workflow_handle(workflow_id)
             description = await handle.describe()
 
-            # Get query count
-            query_count = 0
+            # Get actual workflow state from query
+            last_response = None
             if description.status and description.status.name == "RUNNING":
                 try:
-                    # AgenticAIWorkflow doesn't have query count, set to 0
-                    query_count = 0
+                    # Query the workflow for its current state
+                    state_data = await handle.query("state")
+                    logger.debug(f"Queried state for {workflow_id}: {state_data}")
+                    
+                    # Get the last response from conversation history
+                    conversation_history = state_data.get("conversation_history", [])
+                    if conversation_history:
+                        # Find the last agent message
+                        for msg in reversed(conversation_history):
+                            if msg.get("role") == "agent":
+                                last_response = Response(
+                                    message=msg.get("content", ""),
+                                    event_count=0,
+                                    query_count=0
+                                )
+                                break
+                    
+                    # If no agent response yet, use the status from state
+                    if not last_response and state_data.get("last_response"):
+                        last_response = Response(
+                            message=state_data["last_response"],
+                            event_count=0,
+                            query_count=0
+                        )
                 except Exception as e:
                     logger.warning(
-                        f"Could not query workflow_id: {workflow_id}, error: {e}"
+                        f"Could not query workflow state for workflow_id: {workflow_id}, error: {e}"
                     )
+
+            # Determine workflow status based on state
+            workflow_status = description.status.name.lower() if description.status else "unknown"
+            
+            # Check if workflow has completed
+            if description.status and description.status.name == "COMPLETED":
+                workflow_status = "completed"
+            elif description.status and description.status.name == "RUNNING":
+                # Query for more detailed status
+                try:
+                    state_data = await handle.query("state")
+                    if state_data.get("is_processing", False):
+                        workflow_status = "running"
+                    else:
+                        workflow_status = "completed"  # Workflow is running but not actively processing
+                except:
+                    workflow_status = "running"
 
             return WorkflowState(
                 workflow_id=workflow_id,
-                status=description.status.name.lower()
-                if description.status
-                else "unknown",
-                query_count=query_count,
-                last_response=None,
+                status=workflow_status,
+                query_count=0,  # AgenticAIWorkflow doesn't track query count
+                last_response=last_response,
             )
 
         except RPCError:
