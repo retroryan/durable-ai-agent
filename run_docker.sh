@@ -20,6 +20,9 @@ fi
 echo -e "${BLUE}🔨 Rebuilding Docker containers...${NC}"
 docker-compose build
 
+echo -e "\n${BLUE}🧹 Removing frontend container to ensure fresh DNS resolution...${NC}"
+docker-compose rm -f -s frontend 2>/dev/null || true
+
 echo -e "\n${BLUE}🚀 Starting services with docker-compose (including weather proxy)...${NC}"
 docker-compose --profile weather_proxy up -d
 

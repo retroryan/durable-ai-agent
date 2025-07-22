@@ -3,6 +3,9 @@
 // In development, Vite proxy handles it, so we also use relative URLs
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+// Default timeout in milliseconds (60 seconds)
+const DEFAULT_TIMEOUT = import.meta.env.VITE_API_TIMEOUT ? parseInt(import.meta.env.VITE_API_TIMEOUT) : 60000;
+
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -22,9 +25,34 @@ async function handleResponse(response) {
   return response.json();
 }
 
+function createFetchWithTimeout(timeout = DEFAULT_TIMEOUT) {
+  return async (url, options = {}) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      return response;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new ApiError(`Request timeout after ${timeout}ms`, 408);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+}
+
+const fetchWithTimeout = createFetchWithTimeout();
+
 export const api = {
-  async sendMessage(message, workflowId = null, userName = null) {
-    const response = await fetch(`${API_URL}/chat`, {
+  async sendMessage(message, workflowId = null, userName = null, timeout = DEFAULT_TIMEOUT) {
+    const customFetch = timeout !== DEFAULT_TIMEOUT ? createFetchWithTimeout(timeout) : fetchWithTimeout;
+    const response = await customFetch(`${API_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -36,13 +64,15 @@ export const api = {
     return handleResponse(response);
   },
   
-  async getStatus(workflowId) {
-    const response = await fetch(`${API_URL}/workflow/${workflowId}/status`);
+  async getStatus(workflowId, timeout = DEFAULT_TIMEOUT) {
+    const customFetch = timeout !== DEFAULT_TIMEOUT ? createFetchWithTimeout(timeout) : fetchWithTimeout;
+    const response = await customFetch(`${API_URL}/workflow/${workflowId}/status`);
     return handleResponse(response);
   },
 
-  async queryWorkflow(workflowId) {
-    const response = await fetch(`${API_URL}/workflow/${workflowId}/query`);
+  async queryWorkflow(workflowId, timeout = DEFAULT_TIMEOUT) {
+    const customFetch = timeout !== DEFAULT_TIMEOUT ? createFetchWithTimeout(timeout) : fetchWithTimeout;
+    const response = await customFetch(`${API_URL}/workflow/${workflowId}/query`);
     return handleResponse(response);
   }
 };

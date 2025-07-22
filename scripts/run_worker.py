@@ -20,7 +20,6 @@ from agentic_loop.extract_agent import ReactExtract
 from shared.config import TEMPORAL_TASK_QUEUE, get_temporal_client
 from shared.llm_utils import LLMConfig, setup_llm
 from shared.logging_config import setup_file_logging
-from workflows.agentic_ai_workflow import AgenticAIWorkflow
 from workflows.simple_agent_workflow import SimpleAgentWorkflow
 
 
@@ -105,7 +104,7 @@ async def main():
             worker = Worker(
                 client,
                 task_queue=TEMPORAL_TASK_QUEUE,
-                workflows=[AgenticAIWorkflow, SimpleAgentWorkflow],
+                workflows=[SimpleAgentWorkflow],
                 activities=[
                     react_agent_activity.run_react_agent,
                     extract_agent_activity.run_extract_agent,

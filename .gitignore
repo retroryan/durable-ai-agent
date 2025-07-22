@@ -219,3 +219,5 @@ temporal-data/
 config/secrets/
 
 prompts_out/
+
+api.env
