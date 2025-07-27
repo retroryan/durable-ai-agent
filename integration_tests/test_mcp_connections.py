@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Test consolidated MCP server with all weather tools using MCPClientManager.
+"""Test MCP server with all weather tools using MCPClientManager.
 
-Tests the unified MCP weather server running on port 7778 with:
+Tests the MCP weather server running on port 7778 with:
 - MCPClientManager for connection pooling
 - Pydantic models for request validation
 - String to float coordinate conversion
@@ -36,8 +36,8 @@ from shared.mcp_client_manager import MCPClientManager
 from models.mcp_models import ForecastRequest, HistoricalRequest, AgriculturalRequest
 
 
-async def test_consolidated_server():
-    """Test all tools in the consolidated server."""
+async def test_mcp_server():
+    """Test all tools in the MCP server."""
     server_def = {
         "name": "weather-mcp",
         "connection_type": "http",
@@ -46,7 +46,7 @@ async def test_consolidated_server():
     
     manager = MCPClientManager()
     
-    print("=== Testing Consolidated MCP Weather Server ===")
+    print("=== Testing MCP Weather Server ===")
     print(f"URL: {server_def['url']}")
     
     try:
@@ -251,19 +251,19 @@ async def test_performance_comparison():
 
 
 async def main():
-    """Run consolidated server test."""
+    """Run MCP server test."""
 
     print("MCP Connection Test with MCPClientManager")
     print("=========================================")
-    print("Testing unified MCP weather server with Pydantic models")
+    print("Testing MCP weather server with Pydantic models")
     print("")
     
     print("Note: Make sure the MCP server is running:")
-    print("  poetry run python scripts/run_mcp_servers.py")
+    print("  poetry run python scripts/run_mcp_server.py")
     print("")
     
-    # Test the consolidated server
-    success = await test_consolidated_server()
+    # Test the MCP server
+    success = await test_mcp_server()
     
     # Run performance comparison
     if success:

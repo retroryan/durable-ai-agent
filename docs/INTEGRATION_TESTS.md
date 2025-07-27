@@ -2,7 +2,7 @@
 
 This directory contains integration tests for the Durable AI Agent project. The test suite has been simplified to focus on two distinct types of testing:
 
-1. **MCP Connection Tests** - Test MCP server connections (STDIO and HTTP)
+1. **MCP Connection Tests** - Test MCP server connections via HTTP
 2. **API E2E Tests** - Test complete workflows through the API
 
 ## Test Philosophy
@@ -32,35 +32,32 @@ integration_tests/
 
 ### Mode 1: MCP Connection Tests (Local)
 
-These tests verify that MCP servers can be accessed via HTTP connections.
+These tests verify that the MCP server can be accessed via HTTP connection.
 
 ```bash
-# Start all MCP servers locally
-poetry run python scripts/run_mcp_servers.py
+# Start the MCP server locally
+poetry run python scripts/run_mcp_server.py
 
 # In another terminal, run the connection tests
 poetry run python integration_tests/test_mcp_connections.py
 
-# Optionally test STDIO connection as well
-poetry run python integration_tests/test_mcp_connections.py --stdio
-
-# When done, stop the MCP servers
-poetry run python scripts/stop_mcp_servers.py
+# When done, stop the MCP server
+poetry run python scripts/stop_mcp_server.py
 ```
 
 The test will:
-- Test HTTP connections to all three MCP servers (forecast, historical, agricultural)
-- Verify each server's tools can be listed and invoked
-- Optionally test STDIO connection if --stdio flag is provided
-- Display clear pass/fail results for each server
+- Test HTTP connection to the MCP server on port 7778
+- Verify all three tools (forecast, historical, agricultural) are available
+- Test invocation of each tool
+- Display clear pass/fail results for each tool
 
 ### Mode 2: API E2E Tests (Docker Compose)
 
 These tests verify complete workflows through the API, including tool selection and execution.
 
 ```bash
-# Make sure MCP servers are stopped first
-poetry run python scripts/stop_mcp_servers.py
+# Make sure MCP server is stopped first
+poetry run python scripts/stop_mcp_server.py
 
 # Start all services with docker-compose
 docker-compose up -d
@@ -81,9 +78,9 @@ The tests use environment variables from `.env`:
 
 ```bash
 # MCP Server Configuration
-MCP_FORECAST_SERVER_HOST=localhost
-MCP_FORECAST_SERVER_PORT=7778
-MCP_FORECAST_SERVER_URL=http://localhost:7778/mcp
+MCP_SERVER_HOST=localhost
+MCP_SERVER_PORT=7778
+MCP_SERVER_URL=http://localhost:7778/mcp
 
 # API Configuration (for E2E tests)
 API_URL=http://localhost:8000
@@ -93,40 +90,34 @@ API_URL=http://localhost:8000
 
 ### test_mcp_connections.py
 
-Tests HTTP connections to all MCP servers (and optionally STDIO):
-- **HTTP Tests**: Connects to all three running MCP servers (forecast, historical, agricultural)
-- **STDIO Test**: Only runs with --stdio flag, launches forecast server as subprocess
+Tests HTTP connection to the MCP server:
+- **HTTP Test**: Connects to the MCP server on port 7778 with all three tools
+- **Tool Testing**: Invokes each of the three tools with sample data
 
 Output example:
 ```
-=== Testing Forecast Server (HTTP) ===
+=== Testing MCP Server (HTTP) ===
 URL: http://localhost:7778/mcp
 ✓ Connected to server
-✓ Found 1 tools
+✓ Found 3 tools:
    - get_weather_forecast
-✓ Tool invocation successful, got response with 5 keys
-✓ Forecast server test passed!
-
-=== Testing Historical Server (HTTP) ===
-URL: http://localhost:7779/mcp
-✓ Connected to server
-✓ Found 1 tools
    - get_historical_weather
-✓ Tool invocation successful, got response with 4 keys
-✓ Historical server test passed!
-
-=== Testing Agricultural Server (HTTP) ===
-URL: http://localhost:7780/mcp
-✓ Connected to server
-✓ Found 1 tools
    - get_agricultural_conditions
+
+Testing get_weather_forecast:
+✓ Tool invocation successful, got response with 5 keys
+
+Testing get_historical_weather:
+✓ Tool invocation successful, got response with 4 keys
+
+Testing get_agricultural_conditions:
 ✓ Tool invocation successful, got response with 6 keys
-✓ Agricultural server test passed!
+
+✓ MCP server test passed!
 
 SUMMARY
-Total tests run: 3
-Passed: 3
-Failed: 0
+Total tools tested: 3
+All tests passed!
 ```
 
 ### test_api_e2e.py
@@ -141,15 +132,11 @@ Tests complete workflows through the API:
 
 ### MCP Connection Tests Failing
 
-1. **STDIO Test Fails**:
-   - Check that `mcp_servers/forecast_server.py` exists
-   - Verify Python can run the server script
-   - Check for Python path issues
-
-2. **HTTP Test Fails**:
-   - Ensure MCP servers are running: `poetry run python scripts/run_mcp_servers.py`
-   - Check that ports 7778-7780 are not in use
-   - Verify the server URLs in `.env`
+1. **HTTP Test Fails**:
+   - Ensure MCP server is running: `poetry run python scripts/run_mcp_server.py`
+   - Check that port 7778 is not in use: `lsof -i :7778`
+   - Verify the server URL in `.env`
+   - Check server health: `curl http://localhost:7778/health`
 
 ### API E2E Tests Failing
 

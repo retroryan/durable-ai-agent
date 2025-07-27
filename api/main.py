@@ -21,7 +21,7 @@ from models.api_models import (
     EndConversationResponse, ConversationHistoryResponse,
     WorkflowStatusResponse, SummaryRequestResponse
 )
-from shared.config import get_settings
+from shared.config import Settings
 
 # Create logs directory if it doesn't exist
 # Use local logs directory when running outside Docker
@@ -57,17 +57,17 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     global workflow_service
 
-    settings = get_settings()
-    logger.info(f"Connecting to Temporal at {settings.temporal_host}")
+    config = Settings()
+    logger.info(f"Connecting to Temporal at {config.temporal_host}")
 
     # Create Temporal client
     client = await Client.connect(
-        settings.temporal_host,
-        namespace=settings.temporal_namespace,
+        config.temporal_host,
+        namespace=config.temporal_namespace,
     )
 
     # Initialize workflow service
-    workflow_service = WorkflowService(client, settings.task_queue)
+    workflow_service = WorkflowService(client, config.task_queue)
     logger.info("API server started successfully")
 
     yield
@@ -556,10 +556,10 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    settings = get_settings()
+    config = Settings()
     uvicorn.run(
         "api.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
+        host=config.api_host,
+        port=config.api_port,
         reload=True,
     )

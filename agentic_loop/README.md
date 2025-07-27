@@ -6,8 +6,8 @@
 # 1. Configure your LLM provider in the parent .env file
 #    (see .env.example for examples - e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY, or Ollama settings)
 
-# 2. Start MCP servers locally (in a separate terminal)
-poetry run python scripts/run_mcp_servers.py
+# 2. Start MCP server locally (in a separate terminal)
+poetry run python scripts/run_mcp_server.py
 
 # 3. Run the demo
 MCP_USE_PROXY=false poetry run python agentic_loop/demo_react_agent.py agriculture
@@ -47,8 +47,8 @@ This creates a transparent reasoning trajectory that shows exactly how the AI ar
 ```bash
 # 1. Ensure your .env file has LLM configuration (see .env.example for examples)
 
-# 2. Start MCP servers locally (in a separate terminal)
-poetry run python scripts/run_mcp_servers.py
+# 2. Start MCP server locally (in a separate terminal)
+poetry run python scripts/run_mcp_server.py
 
 # The servers will run on:
 # - Forecast server: http://localhost:7778/mcp

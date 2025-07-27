@@ -24,13 +24,7 @@ class AgriculturalWeatherTool(MCPTool):
     )
     args_model: Type[BaseModel] = AgriculturalRequest
 
-    # MCP configuration
-    # mcp_server_name identifies which MCP server this tool connects to
-    # This is used to construct the prefixed tool name when using the proxy
-    mcp_server_name: str = "agricultural"
-    
     # Note: get_mcp_config() is inherited from MCPTool base class
-    # It handles dynamic tool name resolution based on MCP_USE_PROXY
 
     def execute(
         self,

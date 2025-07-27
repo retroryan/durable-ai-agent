@@ -21,8 +21,9 @@ from workflows.agentic_ai_workflow import AgenticAIWorkflow
 
 
 async def main():
-    # Load environment variables from .env
-    load_dotenv(".env", override=True)
+    # Load environment variables from .env only if not already set
+    # This allows docker-compose environment overrides to take precedence
+    load_dotenv(".env", override=False)
 
     # Initialize logging
     log_file = setup_file_logging("worker", log_level=logging.INFO)

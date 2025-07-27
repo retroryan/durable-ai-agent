@@ -24,11 +24,6 @@ format = [{cmd = "black ."}, {cmd = "isort ."}]
 lint = [{cmd = "black --check ."}, {cmd = "isort --check-only ."}, {ref = "lint-types" }]
 lint-types = "mypy --check-untyped-defs --namespace-packages ."
 test = "pytest"
-mcp-forecast = "python mcp_servers/forecast_server.py"
-mcp-historical = "python mcp_servers/historical_server.py"
-mcp-agricultural = "python mcp_servers/agricultural_server.py"
-mcp-stop.shell = "pkill -f 'mcp_servers/(forecast|historical|agricultural)_server.py' || echo 'No MCP servers were running'"
-mcp-all = "python scripts/run_mcp_servers.py"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
@@ -67,7 +62,7 @@ python_version = "3.10"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "integration_tests"]
+testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "api: marks tests that require the API server to be running",

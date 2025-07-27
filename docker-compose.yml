@@ -84,10 +84,12 @@ services:
     container_name: temporal-ai-agent-worker
     depends_on:
       - temporal
+      - mcp-server
     env_file:
       - .env
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
+      - MCP_SERVER_URL=http://mcp-server:7778/mcp
     command: python scripts/run_worker.py
     networks:
       - durable-network

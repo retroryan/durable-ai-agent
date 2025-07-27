@@ -2,7 +2,7 @@
 """Run all integration tests.
 
 This script runs the simplified integration test suite consisting of:
-1. MCP Connection Tests - Test STDIO and HTTP connections to MCP servers
+1. MCP Connection Tests - Test HTTP connections to MCP server
 2. API E2E Tests - Test complete workflows through the API
 
 All tests are direct Python programs (not pytest) for simplicity.
@@ -76,8 +76,8 @@ def main():
     if not args.api_only:
         if mcp_test.exists():
             print("Running MCP Connection Tests")
-            print("Note: Make sure MCP servers are running with:")
-            print("  poetry run python scripts/run_mcp_servers.py")
+            print("Note: Make sure MCP server is running with:")
+            print("  poetry run python scripts/run_mcp_server.py")
             print("")
             
             if run_direct_python_test(mcp_test):

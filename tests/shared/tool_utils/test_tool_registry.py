@@ -68,9 +68,10 @@ class TestToolRegistryConsolidatedTools:
         
         # Test get_mcp_config returns valid config
         forecast_config = forecast.get_mcp_config()
-        assert forecast_config.server_name == "forecast"
-        assert forecast_config.tool_name == "forecast_get_weather_forecast"
+        assert forecast_config.server_name == "weather-mcp"
+        assert forecast_config.tool_name == "get_weather_forecast"  # Unprefixed
         assert forecast_config.server_definition.connection_type == "http"
+        assert forecast_config.server_definition.url == "http://localhost:7778/mcp"
     
     def test_tool_registry_clear_removes_all_tools(self):
         """Test that clearing registry removes all consolidated tools."""

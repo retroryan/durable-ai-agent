@@ -49,8 +49,7 @@ class TestReactAgentMCP:
         assert agricultural_tool.__class__.is_mcp is True
         
         # Tools should have MCP configuration
-        assert hasattr(forecast_tool, 'mcp_server_name')
-        # Note: mcp_tool_name has been removed - tool names are now computed dynamically
+        # Note: mcp_server_name removed in clean cutover - single server only
         assert hasattr(forecast_tool, 'get_mcp_config')
     
     def test_tool_descriptions_mention_weather(self):

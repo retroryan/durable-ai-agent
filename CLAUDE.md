@@ -91,8 +91,8 @@ cp .env.example .env
 # Start all services (recommended)
 docker-compose up
 
-# Start with weather proxy (unified MCP services)
-docker-compose --profile weather_proxy up
+# Start with forecast service
+docker-compose --profile forecast up
 
 # Start with individual forecast service
 docker-compose --profile forecast up
@@ -100,7 +100,6 @@ docker-compose --profile forecast up
 # Access services at:
 # - API: http://localhost:8000 (docs at /docs)
 # - Temporal UI: http://localhost:8080
-# - Weather Proxy: http://localhost:8001/mcp
 # - Forecast Service: http://localhost:7778/mcp
 
 # Run MCP servers locally with Poetry:
@@ -128,7 +127,6 @@ The application follows a microservices architecture with these key components:
 6. **Tools** (`tools/`) - Modular tool implementations
    - `ToolRegistry` - Dynamic tool management system
    - `agriculture/` - Weather and farming-specific tools
-7. **MCP Proxy** (`mcp_proxy/`) - Unified proxy server combining multiple weather services
 
 ### Key Design Patterns
 
@@ -223,8 +221,7 @@ Common utilities extracted for MCP activities:
 ### MCP Architecture
 
 - **Individual Services**: Separate MCP servers for forecast, historical, agricultural data
-- **Unified Proxy**: Single endpoint (`mcp_proxy`) combining all services
-- **Docker Profiles**: Use `weather_proxy` profile for unified access, `forecast` for individual services
+- **Docker Profiles**: Use specific profiles like `forecast` for individual services
 - **Environment Configuration**: Services configured via environment variables
 
 ## Testing Strategy
@@ -232,25 +229,9 @@ Common utilities extracted for MCP activities:
 - **Unit Tests** (`tests/`) - Test individual components in isolation
 - **Integration Tests** (`integration_tests/`) - Test API endpoints with real Temporal backend
 - **MCP Integration Tests** - Direct Python programs testing MCP client functionality
-- **Proxy Integration Tests** - Test unified MCP proxy (not included in main test runner)
 - Use markers (`-m api`, `-m workflow`) to run specific test categories
 - Integration tests require services to be running via docker-compose
 
-### MCP Proxy Testing
-
-```bash
-# Start weather proxy
-./mcp_proxy/run_docker.sh
-
-# Test proxy functionality
-./mcp_proxy/test_docker.sh
-
-# Run proxy integration tests
-poetry run python integration_tests/test_proxy_integration.py
-
-# Stop proxy
-./mcp_proxy/stop_docker.sh
-```
 
 ## Workflow Routing and Magic Words
 
@@ -275,9 +256,7 @@ When working with MCP (Model Context Protocol) tools:
 1. **Consolidated Tools**: All weather/agriculture tools are now MCP-enabled (no separate `_mcp` tools)
 2. **Inheritance**: MCP tools extend `MCPTool` base class, not `BaseTool` directly
 3. **Identification**: Tools are identified as MCP via `is_mcp: ClassVar[bool] = True`
-4. **Dynamic Tool Names**: Tool names are computed dynamically based on `MCP_USE_PROXY`:
-   - When `MCP_USE_PROXY=true` (default): Names are prefixed (e.g., `forecast_get_weather_forecast`)
-   - When `MCP_USE_PROXY=false`: Names are unprefixed (e.g., `get_weather_forecast`)
+4. **Tool Names**: Tool names follow standard naming (e.g., `get_weather_forecast`)
 5. **Mock Mode**: Tools can be run in mock mode via the tool registry configuration
 6. **Registration**: MCP tools are registered without `_mcp` suffix
 7. **Routing**: Workflow routes to `ToolExecutionActivity` which handles MCP tools based on `is_mcp`

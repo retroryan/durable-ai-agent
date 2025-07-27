@@ -22,37 +22,22 @@ class MCPTool(BaseTool, ABC):
     This class extends BaseTool to add MCP-specific configuration while
     maintaining full compatibility with the existing tool system.
     
-    IMPORTANT NAMING CONVENTION:
-    - Tool.NAME: The canonical tool identifier (e.g., "get_weather_forecast")
-    - mcp_server_name: Identifies which MCP server to connect to (e.g., "forecast")
-    - Tool names in MCP calls depend on deployment mode:
-      * When using proxy (MCP_USE_PROXY=true): Tool names are prefixed with server name
-        Example: "forecast_get_weather_forecast"
-      * When using direct connection (MCP_USE_PROXY=false): Tool names are unprefixed
-        Example: "get_weather_forecast"
-    
-    This dynamic naming handles the fact that FastMCP's mount() feature automatically
-    prefixes tool names when mounting services in the proxy.
+    All MCP tools connect to the MCP server on port 7778.
+    Tool names are always unprefixed (e.g., "get_weather_forecast").
     """
     
     # Override the class-level indicator for MCP tools
     is_mcp: ClassVar[bool] = True  # MCP tools are identified by this class variable
     
     # MCP configuration fields
-    # mcp_server_name identifies which MCP server this tool connects to
-    # Examples: "forecast", "historical", "agricultural"
-    mcp_server_name: str = Field(..., exclude=True)
     
-    # Note: mcp_tool_name has been removed - it's computed dynamically in get_mcp_config()
-    # based on whether we're using the proxy or direct connection
-    
+    # Server definition is computed in get_mcp_config()
     mcp_server_definition: Optional[MCPServerDefinition] = Field(None, exclude=True)
     
     def get_mcp_config(self) -> MCPConfig:
         """
         Get MCP configuration for this tool via HTTP transport.
         
-        All weather tools now use the single consolidated server.
         Tool names are always unprefixed (e.g., "get_weather_forecast").
         
         Returns:
@@ -60,6 +45,11 @@ class MCPTool(BaseTool, ABC):
         """
         # Single server URL for all agriculture tools
         url = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+        
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"MCPTool.get_mcp_config: MCP_SERVER_URL from env: {url}")
         
         return MCPConfig(
             server_name="weather-mcp",

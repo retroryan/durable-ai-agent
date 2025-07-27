@@ -4,7 +4,7 @@ A unified Model Context Protocol (MCP) server providing weather and agricultural
 
 ## Overview
 
-This server consolidates three weather-related tools into a single MCP server:
+This server provides three weather-related tools via a single MCP server:
 - **get_weather_forecast** - Real-time and predictive weather data
 - **get_historical_weather** - Historical weather patterns and trends
 - **get_agricultural_conditions** - Farm-specific conditions and growing data
@@ -17,7 +17,7 @@ All tools are exposed through a single server running on port 7778, with proper 
 
 ```bash
 # Using the convenience script
-poetry run python scripts/run_mcp_servers.py
+poetry run python scripts/run_mcp_server.py
 
 # Or run directly
 poetry run python -m mcp_servers.agricultural_server
@@ -44,7 +44,7 @@ Response:
 ### 3. Stop the Server
 
 ```bash
-poetry run python scripts/stop_mcp_servers.py
+poetry run python scripts/stop_mcp_server.py
 ```
 
 ## Running Tests
@@ -55,7 +55,7 @@ The integration tests verify all server functionality including Pydantic validat
 
 ```bash
 # Start the server first
-poetry run python scripts/run_mcp_servers.py
+poetry run python scripts/run_mcp_server.py
 
 # In another terminal, run tests
 poetry run python integration_tests/test_mcp_connections.py
@@ -155,52 +155,8 @@ All request models are defined in `models/mcp_models.py`:
    End date must be after start date
    ```
 
-## Client Usage
 
-### Using FastMCP Client
 
-```python
-from fastmcp import Client
-from models.mcp_models import ForecastRequest
-
-async def get_weather():
-    client = Client("http://localhost:7778/mcp")
-    
-    async with client:
-        # Create Pydantic model
-        request = ForecastRequest(location="Chicago", days=7)
-        
-        # Call tool with wrapped request
-        result = await client.call_tool(
-            "get_weather_forecast",
-            {"request": request.model_dump()}
-        )
-        
-        # Parse result
-        data = json.loads(result[0].text)
-        return data
-```
-
-### Using MCPClientManager (Temporal)
-
-```python
-from shared.mcp_client_manager import MCPClientManager
-from models.mcp_models import ForecastRequest
-
-manager = MCPClientManager()
-server_def = {
-    "name": "weather-mcp",
-    "connection_type": "http",
-    "url": "http://localhost:7778/mcp"
-}
-
-client = await manager.get_client(server_def)
-request = ForecastRequest(location="Chicago", days=7)
-result = await client.call_tool(
-    "get_weather_forecast",
-    {"request": request.model_dump()}
-)
-```
 
 ## Environment Variables
 
@@ -250,7 +206,7 @@ The server uses:
 
 ### Import Errors
 - Run as module: `python -m mcp_servers.agricultural_server`
-- Or use the script: `poetry run python scripts/run_mcp_servers.py`
+- Or use the script: `poetry run python scripts/run_mcp_server.py`
 
 ### Connection Refused
 - Verify server is running: `curl http://localhost:7778/health`

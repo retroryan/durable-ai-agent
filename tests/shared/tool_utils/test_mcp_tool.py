@@ -10,7 +10,7 @@ from models.tool_definitions import MCPServerDefinition
 from shared.tool_utils.mcp_tool import MCPTool
 
 
-class TestArguments(BaseModel):
+class SampleArguments(BaseModel):
     """Test arguments model."""
     message: str = Field(description="Test message")
     count: int = Field(default=1, description="Number of times")
@@ -23,15 +23,7 @@ class SampleMCPTool(MCPTool):
     MODULE: ClassVar[str] = "test.tools.test_mcp"
     
     description: str = "Test MCP tool"
-    args_model: Type[BaseModel] = TestArguments
-    
-    mcp_server_name: str = "test_server"
-    # Note: mcp_tool_name has been removed - tool names are now computed dynamically
-    mcp_server_definition: MCPServerDefinition = MCPServerDefinition(
-        name="test-server",
-        connection_type="http",
-        url="http://localhost:8000/mcp"
-    )
+    args_model: Type[BaseModel] = SampleArguments
 
 
 class TestMCPToolClass:
@@ -45,40 +37,32 @@ class TestMCPToolClass:
         assert tool.MODULE == "test.tools.test_mcp"
         assert tool.description == "Test MCP tool"
         assert tool.__class__.is_mcp is True  # Check class variable
-        assert tool.mcp_server_name == "test_server"
-        # Note: mcp_tool_name has been removed - tool names are now computed dynamically
-        assert tool.mcp_server_definition.name == "test-server"
-        assert tool.mcp_server_definition.connection_type == "http"
-        assert tool.mcp_server_definition.url == "http://localhost:8000/mcp"
+        # No mcp_server_name field - all tools use single server
     
-    @patch.dict("os.environ", {"MCP_USE_PROXY": "true"})
-    def test_get_mcp_config_proxy_mode(self):
-        """Test get_mcp_config returns correct configuration in proxy mode."""
+    def test_get_mcp_config_default(self):
+        """Test get_mcp_config returns correct configuration with default settings."""
         tool = SampleMCPTool()
         config = tool.get_mcp_config()
         
         assert isinstance(config, MCPConfig)
-        assert config.server_name == "test_server"
-        # In proxy mode, tool name should be prefixed
-        assert config.tool_name == "test_server_test_mcp_tool"
-        assert config.server_definition.name == "mcp-test_server"
+        assert config.server_name == "weather-mcp"
+        assert config.tool_name == "test_mcp_tool"  # Always unprefixed
+        assert config.server_definition.name == "weather-mcp"
         assert config.server_definition.connection_type == "http"
-        # Should use default proxy URL from environment
-        assert config.server_definition.url == "http://weather-proxy:8000/mcp"
+        assert config.server_definition.url == "http://localhost:7778/mcp"
     
-    @patch.dict("os.environ", {"MCP_USE_PROXY": "false", "MCP_URL": "http://test-server:8000/mcp"})
-    def test_get_mcp_config_direct_mode(self):
-        """Test get_mcp_config returns correct configuration in direct mode."""
+    @patch.dict("os.environ", {"MCP_SERVER_URL": "http://custom-server:9999/mcp"})
+    def test_get_mcp_config_custom_url(self):
+        """Test get_mcp_config uses custom MCP_SERVER_URL from environment."""
         tool = SampleMCPTool()
         config = tool.get_mcp_config()
         
         assert isinstance(config, MCPConfig)
-        assert config.server_name == "test_server"
-        # In direct mode, tool name should NOT be prefixed
-        assert config.tool_name == "test_mcp_tool"
-        assert config.server_definition.name == "mcp-test_server"
+        assert config.server_name == "weather-mcp"
+        assert config.tool_name == "test_mcp_tool"  # Always unprefixed
+        assert config.server_definition.name == "weather-mcp"
         assert config.server_definition.connection_type == "http"
-        assert config.server_definition.url == "http://test-server:8000/mcp"
+        assert config.server_definition.url == "http://custom-server:9999/mcp"
     
     def test_execute_raises_error(self):
         """Test that execute method raises RuntimeError for MCP tools."""

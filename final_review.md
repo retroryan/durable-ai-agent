@@ -175,6 +175,26 @@ Only 2 MCP-related variables needed:
 - Sample client connects and all tests pass
 - Performance comparison shows 5.4x speedup with coordinates
 
+### Docker Networking Fix ✅
+- Updated `docker-compose.yml` to set `MCP_SERVER_URL=http://mcp-server:7778/mcp` for worker
+- Added `mcp-server` as a dependency for the worker service
+- Updated `.env` and `.env.example` with proper documentation
+- Integration tests now pass successfully in Docker environment
+
+### Code Cleanup - Complete Cutover ✅
+- **Removed ALL backward compatibility** - clean cutover to single MCP server
+- Cleaned up `shared/tool_utils/mcp_tool.py`:
+  - Removed `mcp_server_name` field entirely - no per-tool server configuration
+  - Simplified documentation to reflect single server architecture
+  - All tools use the consolidated server at port 7778
+- Updated all weather tools in `tools/agriculture/`:
+  - Removed `mcp_server_name` field from all tools
+  - Removed proxy-related comments and configuration
+- Updated all tests:
+  - `tests/shared/tool_utils/test_mcp_tool.py` - removed proxy mode tests
+  - `tests/tools/agriculture/test_mcp_tools.py` - updated for single server
+  - All 16 MCP-related tests passing
+
 ## Summary
 
 The MCP implementation is a perfect example of how to build a clean, simple, and effective integration:

@@ -7,15 +7,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Parse command line arguments
-RUN_CLIENT=false
 REFRESH_FRONT=false
 REFRESH_WORKER=false
 for arg in "$@"; do
     case $arg in
-        --run_client)
-            RUN_CLIENT=true
-            shift
-            ;;
         --front)
             REFRESH_FRONT=true
             shift
@@ -53,7 +48,7 @@ if [ "$REFRESH_WORKER" = true ]; then
     echo "  📡 API Server:        http://localhost:8000"
     echo "  📚 API Documentation: http://localhost:8000/docs"
     echo "  🔄 Temporal UI:       http://localhost:8080"
-    echo "  🌦️  Weather Proxy:     http://localhost:8001/mcp"
+    echo "  🌦️  MCP Server:        http://localhost:7778/mcp"
     echo "  🎨 Frontend:          http://localhost:3000"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     exit 0
@@ -73,14 +68,9 @@ fi
 echo -e "${BLUE}🔨 Rebuilding Docker containers...${NC}"
 docker-compose build
 
-# Determine which profiles to use
-if [ "$RUN_CLIENT" = true ]; then
-    echo -e "\n${BLUE}🚀 Starting services with docker-compose (including API server, frontend, and weather proxy)...${NC}"
-    docker-compose --profile weather_proxy --profile api_server up -d
-else
-    echo -e "\n${BLUE}🚀 Starting services with docker-compose (weather proxy only, no API server or frontend)...${NC}"
-    docker-compose --profile weather_proxy up -d
-fi
+# Always run all services including API server and frontend
+echo -e "\n${BLUE}🚀 Starting all services with docker-compose...${NC}"
+docker-compose --profile api_server up -d
 
 # Wait for services to be ready
 echo -e "\n${YELLOW}⏳ Waiting for services to start...${NC}"
@@ -91,24 +81,14 @@ if docker-compose ps | grep -q "Up"; then
     echo -e "\n${GREEN}✅ Services are running!${NC}"
     echo -e "\n${GREEN}📍 Available endpoints:${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    if [ "$RUN_CLIENT" = true ]; then
-        echo -e "  📡 API Server:        http://localhost:8000"
-        echo -e "  📚 API Documentation: http://localhost:8000/docs"
-    fi
+    echo -e "  📡 API Server:        http://localhost:8000"
+    echo -e "  📚 API Documentation: http://localhost:8000/docs"
     echo -e "  🔄 Temporal UI:       http://localhost:8080"
-    echo -e "  🌦️  Weather Proxy:     http://localhost:8001/mcp"
-    if [ "$RUN_CLIENT" = true ]; then
-        echo -e "  🎨 Frontend:          http://localhost:3000"
-    fi
+    echo -e "  🌦️  MCP Server:        http://localhost:7778/mcp"
+    echo -e "  🎨 Frontend:          http://localhost:3000"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "\n${BLUE}💡 View logs with: docker-compose logs -f${NC}"
     echo -e "${BLUE}📁 Application logs are written to: ./logs/${NC}"
-    
-    if [ "$RUN_CLIENT" = false ]; then
-        echo -e "\n${YELLOW}📌 Note: API server was not started (--run_client flag not provided)${NC}"
-        echo -e "${YELLOW}   You can now run the API server locally using:${NC}"
-        echo -e "${GREEN}   ./scripts/run_api_local.sh${NC}"
-    fi
 else
     echo -e "\n${YELLOW}⚠️  Some services may still be starting up...${NC}"
     echo -e "Check status with: docker-compose ps"

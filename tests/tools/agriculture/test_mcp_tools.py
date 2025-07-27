@@ -1,4 +1,4 @@
-"""Tests for consolidated MCP-enabled weather tools."""
+"""Tests for MCP-enabled weather tools."""
 import os
 from unittest.mock import patch
 
@@ -11,18 +11,16 @@ from tools.agriculture.historical_weather import HistoricalWeatherTool
 from tools.agriculture.weather_forecast import WeatherForecastTool
 
 
-class TestConsolidatedMCPTools:
-    """Tests for consolidated MCP weather tool implementations."""
+class TestMCPTools:
+    """Tests for MCP weather tool implementations."""
     
     def test_weather_forecast_tool_is_mcp(self):
         """Test WeatherForecastTool is correctly configured as MCP tool."""
         tool = WeatherForecastTool()
         
         assert tool.NAME == "get_weather_forecast"
-        assert tool.MODULE == "tools.precision_agriculture.weather_forecast"
+        assert tool.MODULE == "tools.agriculture.weather_forecast"
         assert tool.__class__.is_mcp is True
-        assert tool.mcp_server_name == "forecast"
-        # Note: mcp_tool_name has been removed - tool names are now computed dynamically
         assert "forecast" in tool.description.lower()
     
     def test_historical_weather_tool_is_mcp(self):
@@ -30,10 +28,8 @@ class TestConsolidatedMCPTools:
         tool = HistoricalWeatherTool()
         
         assert tool.NAME == "get_historical_weather"
-        assert tool.MODULE == "tools.precision_agriculture.historical_weather"
+        assert tool.MODULE == "tools.agriculture.historical_weather"
         assert tool.__class__.is_mcp is True
-        assert tool.mcp_server_name == "historical"
-        # Note: mcp_tool_name has been removed - tool names are now computed dynamically
         assert "historical" in tool.description.lower()
     
     def test_agricultural_weather_tool_is_mcp(self):
@@ -41,10 +37,8 @@ class TestConsolidatedMCPTools:
         tool = AgriculturalWeatherTool()
         
         assert tool.NAME == "get_agricultural_conditions"
-        assert tool.MODULE == "tools.precision_agriculture.agricultural_weather"
+        assert tool.MODULE == "tools.agriculture.agricultural_weather"
         assert tool.__class__.is_mcp is True
-        assert tool.mcp_server_name == "agricultural"
-        # Note: mcp_tool_name has been removed - tool names are now computed dynamically
         assert "agricultural" in tool.description.lower()
     
     def test_tools_have_correct_argument_models(self):
@@ -92,49 +86,37 @@ class TestConsolidatedMCPTools:
         assert "40.7128" in result
         assert "-74.0060" in result
     
-    @patch.dict(os.environ, {"MCP_USE_PROXY": "true"})
-    def test_get_mcp_config_returns_correct_configuration_proxy_mode(self):
-        """Test get_mcp_config returns correct configuration in proxy mode."""
+    def test_get_mcp_config_returns_correct_configuration(self):
+        """Test get_mcp_config returns correct configuration."""
         tool = WeatherForecastTool()
         config = tool.get_mcp_config()
         
         assert isinstance(config, MCPConfig)
-        assert config.server_name == "forecast"
-        # In proxy mode, tool name should be prefixed with server name
-        assert config.tool_name == "forecast_get_weather_forecast"
+        assert config.server_name == "weather-mcp"
+        assert config.tool_name == "get_weather_forecast"  # Always unprefixed
         assert isinstance(config.server_definition, MCPServerDefinition)
-        assert config.server_definition.name == "mcp-forecast"
+        assert config.server_definition.name == "weather-mcp"
         assert config.server_definition.connection_type == "http"
+        assert config.server_definition.url == "http://localhost:7778/mcp"
     
-    @patch.dict(os.environ, {"MCP_USE_PROXY": "false"})
-    def test_get_mcp_config_returns_correct_configuration_direct_mode(self):
-        """Test get_mcp_config returns correct configuration in direct mode."""
+    @patch.dict(os.environ, {"MCP_SERVER_URL": "http://custom:9999/mcp"})
+    def test_get_mcp_config_uses_custom_url(self):
+        """Test get_mcp_config uses custom MCP_SERVER_URL."""
         tool = WeatherForecastTool()
         config = tool.get_mcp_config()
         
         assert isinstance(config, MCPConfig)
-        assert config.server_name == "forecast"
-        # In direct mode, tool name should NOT be prefixed
+        assert config.server_name == "weather-mcp"
         assert config.tool_name == "get_weather_forecast"
-        assert isinstance(config.server_definition, MCPServerDefinition)
-        assert config.server_definition.name == "mcp-forecast"
-        assert config.server_definition.connection_type == "http"
-    
-    @patch.dict(os.environ, {"MCP_URL": "http://custom-mcp:9000/api"})
-    def test_mcp_config_uses_environment_url(self):
-        """Test that MCP configuration uses MCP_URL from environment."""
-        tool = WeatherForecastTool()
-        config = tool.get_mcp_config()
-        
-        assert config.server_definition.url == "http://custom-mcp:9000/api"
+        assert config.server_definition.url == "http://custom:9999/mcp"
     
     def test_mcp_config_uses_default_url_when_not_set(self):
-        """Test that MCP configuration uses default URL when MCP_URL not set."""
-        # Ensure MCP_URL is not set
-        if "MCP_URL" in os.environ:
-            del os.environ["MCP_URL"]
+        """Test that MCP configuration uses default URL when MCP_SERVER_URL not set."""
+        # Ensure MCP_SERVER_URL is not set
+        if "MCP_SERVER_URL" in os.environ:
+            del os.environ["MCP_SERVER_URL"]
         
         tool = WeatherForecastTool()
         config = tool.get_mcp_config()
         
-        assert config.server_definition.url == "http://weather-proxy:8000/mcp"
+        assert config.server_definition.url == "http://localhost:7778/mcp"
