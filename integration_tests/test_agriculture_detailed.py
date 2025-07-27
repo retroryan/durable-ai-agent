@@ -21,8 +21,12 @@ Each test case shows:
 This provides transparency into the AI's decision-making process and helps debug
 tool selection, argument passing, and response generation.
 
-Run with: poetry run python integration_tests/test_agriculture_detailed.py
+Usage:
+    poetry run python integration_tests/test_agriculture_detailed.py        # Run all tests
+    poetry run python integration_tests/test_agriculture_detailed.py 2      # Run first 2 tests
+    poetry run python integration_tests/test_agriculture_detailed.py 1      # Run only first test
 """
+import argparse
 import asyncio
 import json
 import sys
@@ -88,8 +92,8 @@ class DetailedAgricultureIntegrationTest:
         """
         Wait for agent response while showing progress indicators.
         
-        This enhanced waiting method provides real-time feedback about the workflow
-        execution status, making it clear that processing is happening.
+        This method now uses the /status endpoint like the frontend does,
+        to test the exact same code path including message serialization.
         
         Args:
             client: API client instance
@@ -108,15 +112,28 @@ class DetailedAgricultureIntegrationTest:
             await asyncio.sleep(2)  # Poll every 2 seconds
             print(".", end="", flush=True)
             
-            # Get conversation history
-            history_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/history"
+            # Use /status endpoint like the frontend does
+            status_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/status"
             )
-            history_data = history_response.json()
+            status_data = status_response.json()
             
-            # Check if we have an agent response
-            messages = history_data.get("conversation_history", [])
-            if len(messages) >= 2 and messages[-1].get("role") == "agent":
+            # Check conversation_history if present (same as frontend)
+            conversation_history = status_data.get("conversation_history", [])
+            if conversation_history:
+                # Look for agent messages
+                for msg in conversation_history:
+                    if msg.get("role") == "agent":
+                        elapsed = time.time() - start_time
+                        print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
+                        # Log what we received for debugging
+                        print(f"   Status: {status_data.get('status')}")
+                        print(f"   Messages in history: {len(conversation_history)}")
+                        return True, elapsed
+            
+            # Also check last_response for compatibility
+            last_response = status_data.get("last_response", {})
+            if last_response and last_response.get("message") != "Processing your request...":
                 elapsed = time.time() - start_time
                 print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
                 return True, elapsed
@@ -288,17 +305,31 @@ class DetailedAgricultureIntegrationTest:
                             "args": traj.tool_args
                         })
             
-            # Get final response
+            # Get final response (use status endpoint to match frontend)
             print("\n" + "─" * 60)
             print("📝 Extract Agent")
             print("─" * 60)
             
-            history_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/history"
+            # Get final status to match frontend behavior
+            final_status_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/status"
             )
-            history_data = history_response.json()
-            messages = history_data.get("conversation_history", [])
-            final_message = messages[-1].get("content", "") if messages else ""
+            final_status_data = final_status_response.json()
+            
+            # Try to get message from conversation_history first (like frontend)
+            final_message = ""
+            conversation_history = final_status_data.get("conversation_history", [])
+            if conversation_history:
+                # Find last agent message
+                for msg in reversed(conversation_history):
+                    if msg.get("role") == "agent":
+                        final_message = msg.get("content", "")
+                        break
+            
+            # Fallback to last_response if no conversation history
+            if not final_message:
+                last_response = final_status_data.get("last_response", {})
+                final_message = last_response.get("message", "")
             
             print("✅ Answer extracted successfully")
             
@@ -425,25 +456,37 @@ class DetailedAgricultureIntegrationTest:
                 return False
         return False
     
-    async def run_all_detailed_tests(self, client: DurableAgentAPIClient) -> int:
+    async def run_all_detailed_tests(self, client: DurableAgentAPIClient, test_limit: Optional[int] = None) -> int:
         """
-        Run all agriculture tool integration tests with detailed output.
+        Run agriculture tool integration tests with detailed output.
         
-        This method orchestrates the execution of all test cases, providing:
+        This method orchestrates the execution of test cases, providing:
         - Clear visual separation between tests
         - Comprehensive execution details
         - Summary statistics
         - Success/failure tracking
         
+        Args:
+            client: API client instance
+            test_limit: Maximum number of tests to run (None for all tests)
+        
         Returns:
             Number of failed tests
         """
-        tests = [
+        all_tests = [
             ("Weather Forecast with Recommendation", self.test_weather_forecast_with_details),
             ("Agricultural Conditions for Planting", self.test_agricultural_conditions_with_details),
             ("Historical Weather Query", self.test_historical_weather_with_details),
             ("Multi-Location Comparison", self.test_multi_location_comparison_with_details),
         ]
+        
+        # Apply test limit if specified
+        if test_limit is not None:
+            tests = all_tests[:test_limit]
+            if test_limit > len(all_tests):
+                print(f"\n⚠️  Warning: Requested {test_limit} tests but only {len(all_tests)} available")
+        else:
+            tests = all_tests
         
         passed = 0
         failed = 0
@@ -452,7 +495,9 @@ class DetailedAgricultureIntegrationTest:
         print("🌾 AGRICULTURE TOOL INTEGRATION TESTS - DETAILED REACT LOOP ANALYSIS")
         print("=" * 80)
         print(f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"📊 Total Tests: {len(tests)}")
+        print(f"📊 Running: {len(tests)} of {len(all_tests)} tests")
+        if test_limit is not None:
+            print(f"🎯 Test Limit: {test_limit}")
         print(f"🔍 Mode: Detailed React Loop Visibility")
         print("=" * 80)
         
@@ -515,11 +560,36 @@ async def main():
     Main entry point for the detailed agriculture integration tests.
     
     This function:
-    1. Initializes the API client
-    2. Checks API health
-    3. Runs all detailed tests
-    4. Reports results and exits with appropriate code
+    1. Parses command-line arguments
+    2. Initializes the API client
+    3. Checks API health
+    4. Runs specified number of tests
+    5. Reports results and exits with appropriate code
     """
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Run detailed agriculture integration tests with React loop visibility",
+        epilog="Examples:\n"
+               "  poetry run python integration_tests/test_agriculture_detailed.py        # Run all tests\n"
+               "  poetry run python integration_tests/test_agriculture_detailed.py 2      # Run first 2 tests\n"
+               "  poetry run python integration_tests/test_agriculture_detailed.py 1      # Run only first test",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "num_tests",
+        type=int,
+        nargs="?",
+        default=None,
+        help="Number of tests to run (default: all tests)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate argument
+    if args.num_tests is not None and args.num_tests < 1:
+        print("❌ Error: Number of tests must be at least 1")
+        sys.exit(1)
+    
     print("\n🚀 Starting Detailed Agriculture Integration Tests")
     print("   This test suite provides full visibility into the AI agent's React loop")
     print("   including reasoning, tool selection, and response synthesis.")
@@ -535,8 +605,8 @@ async def main():
         sys.exit(1)
     print("✅ API is healthy")
     
-    # Run tests
-    failed = await test_suite.run_all_detailed_tests(client)
+    # Run tests with specified limit
+    failed = await test_suite.run_all_detailed_tests(client, test_limit=args.num_tests)
     
     # Exit with appropriate code
     sys.exit(failed)

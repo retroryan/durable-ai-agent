@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { api } from '../services/api';
+import { MESSAGE_ROLES } from '../constants/messageRoles';
 
 // List of random user names
 const RANDOM_NAMES = [
@@ -16,6 +17,19 @@ const generateUserName = () => {
   return `${RANDOM_NAMES[randomIndex]}_${timestamp}`;
 };
 
+/**
+ * Custom hook for managing workflow conversations with Temporal backend.
+ * 
+ * This hook handles:
+ * - Sending messages to workflows
+ * - Polling for responses with deduplication
+ * - Managing conversation state
+ * - Ending and resetting conversations
+ * 
+ * The key innovation is using sequential message IDs from the backend
+ * to prevent duplicate messages when polling. Each message has a unique
+ * incrementing ID, and we only display messages with IDs we haven't seen.
+ */
 export function useWorkflow() {
   const [workflowId, setWorkflowId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -24,6 +38,8 @@ export function useWorkflow() {
   const [workflowStatus, setWorkflowStatus] = useState(null);
   const [userName] = useState(generateUserName());
   const pollingIntervalRef = useRef(null);
+  // Track the highest message ID we've seen to prevent duplicates
+  const lastSeenMessageIdRef = useRef(0);
 
   // Generate unique message ID
   const generateId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -39,7 +55,7 @@ export function useWorkflow() {
     const userMessage = {
       id: generateId(),
       content: messageText,
-      role: 'user',
+      role: MESSAGE_ROLES.USER,
       timestamp: new Date().toISOString()
     };
     setMessages(prev => [...prev, userMessage]);
@@ -57,19 +73,8 @@ export function useWorkflow() {
         setWorkflowId(response.workflow_id);
       }
 
-      // Add assistant response if available
-      if (response.last_response) {
-        console.log('[useWorkflow] Initial response available:', response.last_response.message);
-        const assistantMessage = {
-          id: generateId(),
-          content: response.last_response.message,
-          role: 'assistant',
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        console.log('[useWorkflow] No initial response, will poll for updates');
-      }
+      // Don't add initial response here - let polling handle all messages  
+      console.log('[useWorkflow] Message sent, polling will handle responses');
 
       setWorkflowStatus(response.status);
     } catch (err) {
@@ -82,7 +87,7 @@ export function useWorkflow() {
 
   // Poll for workflow status updates
   useEffect(() => {
-    if (!workflowId || workflowStatus === 'completed' || workflowStatus === 'Completed') {
+    if (!workflowId) {
       return;
     }
 
@@ -95,23 +100,55 @@ export function useWorkflow() {
         console.log('[useWorkflow] Poll status:', status);
         setWorkflowStatus(status.status);
         
-        // If workflow completed and we have a new response, add it
-        if ((status.status === 'completed' || status.status === 'Completed') && status.last_response) {
-          console.log('[useWorkflow] Workflow completed with response:', status.last_response.message);
-          // Check if we already have this response
-          const lastMessage = messages[messages.length - 1];
-          if (!lastMessage || lastMessage.content !== status.last_response.message) {
-            const assistantMessage = {
-              id: generateId(),
-              content: status.last_response.message,
-              role: 'assistant',
-              timestamp: new Date().toISOString()
-            };
-            setMessages(prev => [...prev, assistantMessage]);
+        // Check conversation history for new messages
+        // The backend sends the last 10 messages with sequential IDs
+        if (status.conversation_history && status.conversation_history.length > 0) {
+          const newMessages = [];
+          
+          // Process each message in the conversation history
+          for (const msg of status.conversation_history) {
+            console.log('[useWorkflow] Processing message:', { 
+              id: msg.id, 
+              role: msg.role, 
+              lastSeenId: lastSeenMessageIdRef.current,
+              expectedRole: MESSAGE_ROLES.AGENT 
+            });
+            
+            // Only add AGENT messages with IDs higher than what we've seen
+            // User messages are already displayed locally
+            if (msg.id > lastSeenMessageIdRef.current && msg.role === MESSAGE_ROLES.AGENT) {
+              console.log('[useWorkflow] New agent message found:', msg.id, msg.content);
+              
+              // Map backend message format to frontend format
+              const frontendMessage = {
+                id: generateId(),
+                content: msg.content,
+                role: MESSAGE_ROLES.AGENT,
+                timestamp: msg.timestamp || new Date().toISOString(),
+                backendId: msg.id  // Keep reference to backend ID for debugging
+              };
+              newMessages.push(frontendMessage);
+            }
+            
+            // Always update our tracking of the highest ID we've seen
+            // This includes user messages so we don't get stuck
+            if (msg.id > lastSeenMessageIdRef.current) {
+              lastSeenMessageIdRef.current = msg.id;
+            }
           }
-          setIsLoading(false);
-        } else if (status.status === 'running' || status.status === 'started') {
-          console.log('[useWorkflow] Workflow still running, continuing to poll...');
+          
+          // Add all new messages at once to avoid multiple renders
+          if (newMessages.length > 0) {
+            setMessages(prev => [...prev, ...newMessages]);
+            setIsLoading(false);
+          }
+        }
+        
+        // Update loading state based on whether we're waiting for a response
+        const pendingPrompts = status.pending_prompts || 0;
+        const isProcessing = status.is_processing || false;
+        if (pendingPrompts > 0 || isProcessing) {
+          setIsLoading(true);
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -124,19 +161,31 @@ export function useWorkflow() {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, [workflowId, workflowStatus, messages]);
+  }, [workflowId, messages]);
 
   // Reset conversation
-  const resetConversation = useCallback(() => {
+  const resetConversation = useCallback(async () => {
+    // End the current workflow if it exists
+    if (workflowId) {
+      try {
+        await api.endChat(workflowId);
+        console.log('[useWorkflow] Ended chat for workflow:', workflowId);
+      } catch (err) {
+        console.error('Failed to end chat:', err);
+      }
+    }
+    
+    // Clear state for new conversation
     setWorkflowId(null);
     setMessages([]);
     setIsLoading(false);
     setError(null);
     setWorkflowStatus(null);
+    lastSeenMessageIdRef.current = 0;
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
-  }, []);
+  }, [workflowId]);
 
   return {
     workflowId,

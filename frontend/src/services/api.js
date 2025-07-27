@@ -44,5 +44,13 @@ export const api = {
   async queryWorkflow(workflowId) {
     const response = await fetch(`${API_URL}/workflow/${workflowId}/query`);
     return handleResponse(response);
+  },
+
+  async endChat(workflowId) {
+    const response = await fetch(`${API_URL}/workflow/${workflowId}/end-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return handleResponse(response);
   }
 };

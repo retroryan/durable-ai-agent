@@ -129,7 +129,14 @@ class WorkflowService:
                 try:
                     # Query the workflow for its current state
                     state_data = await handle.query("state")
-                    logger.debug(f"Queried state for {workflow_id}: {state_data}")
+                    logger.info(f"Queried state for {workflow_id}: {state_data}")
+                    
+                    # Log conversation history details
+                    conv_history = state_data.get("conversation_history", [])
+                    if conv_history:
+                        logger.info(f"Conversation history has {len(conv_history)} messages")
+                        for i, msg in enumerate(conv_history):
+                            logger.info(f"  Message {i}: id={msg.get('id')}, role={msg.get('role')}, content_preview={msg.get('content', '')[:50]}...")
                     
                     # Get the last response from conversation history
                     conversation_history = state_data.get("conversation_history", [])
@@ -163,21 +170,15 @@ class WorkflowService:
             if description.status and description.status.name == "COMPLETED":
                 workflow_status = "completed"
             elif description.status and description.status.name == "RUNNING":
-                # Query for more detailed status
-                try:
-                    state_data = await handle.query("state")
-                    if state_data.get("is_processing", False):
-                        workflow_status = "running"
-                    else:
-                        workflow_status = "completed"  # Workflow is running but not actively processing
-                except:
-                    workflow_status = "running"
+                # Workflow is running - it's designed to handle multiple messages
+                workflow_status = "running"
 
             return WorkflowState(
                 workflow_id=workflow_id,
                 status=workflow_status,
                 query_count=0,  # AgenticAIWorkflow doesn't track query count
                 last_response=last_response,
+                conversation_history=conversation_history,
             )
 
         except RPCError:

@@ -17,7 +17,20 @@ class MessageRole(str, Enum):
 
 
 class Message(BaseModel):
-    """Simple message with enum role."""
+    """Message in a conversation with sequential ID for tracking.
+    
+    Each message in a workflow gets a unique, incrementing ID that allows
+    the frontend to track which messages it has already displayed. This
+    prevents duplicate messages when polling for updates.
+    
+    Attributes:
+        id: Sequential message ID assigned by the workflow (starts at 1)
+        role: The sender role (user, agent, or system)
+        content: The message text content
+        timestamp: When the message was created
+        metadata: Optional additional data about the message
+    """
+    id: int = Field(description="Sequential message ID assigned by workflow")
     role: MessageRole
     content: str
     timestamp: datetime = Field(default_factory=datetime.now)
@@ -61,6 +74,7 @@ class WorkflowState(BaseModel):
     status: str = Field(description="Workflow status")
     query_count: int = Field(default=0, description="Number of queries made")
     last_response: Optional[Response] = Field(default=None)
+    conversation_history: Optional[ConversationHistory] = Field(default=None, description="Conversation history from workflow")
 
 
 class ReactAgentActivityResult(BaseModel):

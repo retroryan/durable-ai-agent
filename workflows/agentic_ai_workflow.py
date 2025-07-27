@@ -35,6 +35,9 @@ class AgenticAIWorkflow:
         self.user_name: str = "default_user"
         self.chat_ended: bool = False
         self.conversation_history: ConversationHistory = []
+        # Sequential message ID counter - ensures each message gets a unique ID
+        # This allows the frontend to track which messages it has already displayed
+        self.message_id_counter: int = 0
 
     @workflow.run
     async def run(self, workflowSummary: Optional[WorkflowSummary] = None) -> ConversationHistory:
@@ -109,7 +112,9 @@ class AgenticAIWorkflow:
             response_message = self._format_response(final_answer, trajectories)
             
             # Save to conversation history
+            self.message_id_counter += 1
             agent_message = Message(
+                id=self.message_id_counter,
                 role=MessageRole.AGENT,
                 content=response_message,
                 timestamp=workflow.now()
@@ -129,7 +134,9 @@ class AgenticAIWorkflow:
 
         except Exception as e:
             workflow.logger.error(f"[AgenticAIWorkflow] Error processing prompt: {e}")
+            self.message_id_counter += 1
             error_message = Message(
+                id=self.message_id_counter,
                 role=MessageRole.AGENT,
                 content=f"Error processing prompt: {e}",
                 timestamp=workflow.now()
@@ -396,11 +403,18 @@ class AgenticAIWorkflow:
 
     @workflow.signal
     async def prompt(self, message: str):
-        """Signal handler to add new prompts to the queue."""
+        """Signal handler to add new prompts to the queue.
+        
+        When a user sends a message, it's added to both the prompt queue
+        for processing and the conversation history with a unique sequential ID.
+        This ensures the frontend can track which messages it has displayed.
+        """
         workflow.logger.info(f"[AgenticAIWorkflow] Received prompt signal: {message}")
         self.prompt_queue.append(message)
-        # Add user message to conversation history
+        # Add user message to conversation history with sequential ID
+        self.message_id_counter += 1
         user_message = Message(
+            id=self.message_id_counter,
             role=MessageRole.USER,
             content=message,
             timestamp=workflow.now()
@@ -415,19 +429,47 @@ class AgenticAIWorkflow:
 
     @workflow.query
     def state(self) -> Dict[str, Any]:
-        """Query handler for current state (compatibility with API service)."""
+        """Query handler for current state (compatibility with API service).
+        
+        Returns workflow state including recent conversation history.
+        To prevent sending too much data, only the last 10 messages are included.
+        Each message has a sequential ID that allows the frontend to track
+        which messages it has already displayed.
+        """
         latest_msg = self.get_latest_response()
-        return {
+        # Return only last 10 messages to avoid sending too much data
+        recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
+        # Convert Message objects to dicts for proper JSON serialization
+        # Use mode='json' to ensure enums are serialized as their values
+        serialized_history = [msg.model_dump(mode='json') for msg in recent_history]
+        
+        # Log what we're returning for debugging
+        workflow.logger.info(f"[AgenticAIWorkflow.state] Returning {len(serialized_history)} messages")
+        if serialized_history:
+            workflow.logger.info(f"[AgenticAIWorkflow.state] First message: id={serialized_history[0].get('id')}, role={serialized_history[0].get('role')}")
+            workflow.logger.info(f"[AgenticAIWorkflow.state] Last message: id={serialized_history[-1].get('id')}, role={serialized_history[-1].get('role')}")
+        
+        result = {
             "last_response": latest_msg.content if latest_msg else "Processing your request...",
             "status": self.workflow_status,
-            "conversation_history": self.conversation_history,
+            "conversation_history": serialized_history,
             "pending_prompts": len(self.prompt_queue),
             "is_processing": self.workflow_status == WorkflowStatus.RUNNING_REACT_LOOP
         }
+        
+        return result
     
     @workflow.query
     def get_conversation_history(self) -> ConversationHistory:
         """Query handler to get the full conversation history."""
+        workflow.logger.info(f"[AgenticAIWorkflow.get_conversation_history] Returning {len(self.conversation_history)} messages")
+        if self.conversation_history:
+            # Log details about messages for debugging
+            for i, msg in enumerate(self.conversation_history):
+                workflow.logger.info(
+                    f"[AgenticAIWorkflow.get_conversation_history] Message {i}: "
+                    f"id={msg.id}, role={msg.role.value}, content_preview={msg.content[:50]}..."
+                )
         return self.conversation_history
 
     @workflow.query

@@ -197,6 +197,15 @@ async def get_workflow_status(workflow_id: str):
         logger.info(
             f"Retrieved status for workflow_id: {workflow_id}, status: {state.status}"
         )
+        # Debug logging to inspect the actual response
+        if hasattr(state, 'conversation_history') and state.conversation_history:
+            logger.info(f"Status response has {len(state.conversation_history)} messages")
+            for i, msg in enumerate(state.conversation_history[:3]):  # Log first 3 messages
+                logger.info(
+                    f"  Message {i}: id={getattr(msg, 'id', 'NO_ID')}, "
+                    f"role={getattr(msg, 'role', 'NO_ROLE')}, "
+                    f"role_type={type(getattr(msg, 'role', None))}"
+                )
         return state
     except HTTPException:
         raise
@@ -542,6 +551,22 @@ async def signal_stop_workflow(workflow_id: str):
     except Exception as e:
         logger.error(f"Error sending stop signal to workflow {workflow_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/workflow/{workflow_id}/end-chat")
+async def end_chat(workflow_id: str):
+    """Sends 'end_chat' signal to the workflow."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        await handle.signal("end_chat")
+        return {"message": "End chat signal sent."}
+    except Exception as e:
+        logger.error(f"Error sending end chat signal to workflow {workflow_id}: {e}")
+        # Workflow not found or other error
+        raise HTTPException(status_code=404, detail="Workflow not found")
 
 
 @app.get("/health")

@@ -85,7 +85,7 @@
   align-items: flex-end;
 }
 
-.message-bubble.assistant {
+.message-bubble.agent {
   align-items: flex-start;
 }
 
@@ -101,7 +101,7 @@
   color: white;
 }
 
-.message-bubble.assistant .message-content {
+.message-bubble.agent .message-content {
   background-color: #e9ecef;
   color: #333;
 }

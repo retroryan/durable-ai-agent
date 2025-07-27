@@ -8,12 +8,56 @@ from typing import Optional
 import httpx
 
 
+class TimestampedRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """RotatingFileHandler that uses timestamps for rotated files instead of numbers."""
+    
+    def doRollover(self):
+        """Override to use timestamp naming for rotated files."""
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        
+        # Generate timestamp for the rotated file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Move current log to timestamped backup
+        if os.path.exists(self.baseFilename):
+            # Get the base name without extension
+            base_name = os.path.splitext(self.baseFilename)[0]
+            ext = os.path.splitext(self.baseFilename)[1]
+            
+            # Create new filename with timestamp
+            dfn = f"{base_name}_{timestamp}{ext}"
+            os.rename(self.baseFilename, dfn)
+            
+            # Clean up old files if we exceed backupCount
+            if self.backupCount > 0:
+                # Get all backup files matching our pattern
+                dir_name = os.path.dirname(dfn)
+                base_name_only = os.path.basename(base_name)
+                pattern = f"{base_name_only}_*{ext}"
+                
+                backup_files = []
+                for filename in os.listdir(dir_name or '.'):
+                    if filename.startswith(f"{base_name_only}_") and filename.endswith(ext):
+                        backup_files.append(os.path.join(dir_name, filename))
+                
+                # Sort by modification time and delete oldest if needed
+                backup_files.sort(key=lambda x: os.path.getmtime(x))
+                while len(backup_files) > self.backupCount:
+                    os.remove(backup_files[0])
+                    backup_files.pop(0)
+        
+        # Open new file
+        self.stream = self._open()
+
+
 def setup_file_logging(
     service_name: str,
     log_level: int = logging.INFO,
     file_log_level: int = logging.DEBUG,
-    max_bytes: int = 10 * 1024 * 1024,  # 10MB
-    backup_count: int = 5,
+    max_bytes: int = 5 * 1024 * 1024,  # 5MB - Simple rotation size for demo
+    backup_count: int = 10,  # Keep last 10 rotated files for demo
     log_dir: str = "logs",
 ) -> Optional[Path]:
     """
@@ -56,13 +100,15 @@ def setup_file_logging(
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
-    # File handler with rotation - include timestamp for each restart
-    log_filename = (
-        log_path / f"{service_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    )
+    # Use consistent filename (no timestamp) to enable proper rotation
+    log_filename = log_path / f"{service_name}.log"
+    
     try:
-        file_handler = logging.handlers.RotatingFileHandler(
-            log_filename, maxBytes=max_bytes, backupCount=backup_count
+        # Simple rotating file handler - rotates at 5MB, keeps 10 files with timestamp naming
+        file_handler = TimestampedRotatingFileHandler(
+            log_filename, 
+            maxBytes=max_bytes,  # 5MB per file
+            backupCount=backup_count  # Keep 10 backup files (50MB total)
         )
         file_handler.setLevel(file_log_level)
         file_handler.setFormatter(file_formatter)

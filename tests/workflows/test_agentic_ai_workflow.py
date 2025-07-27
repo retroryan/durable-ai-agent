@@ -285,10 +285,10 @@ class TestAgenticAIWorkflow:
                 # Verify result is a list of messages
                 assert isinstance(result, list)
                 assert len(result) > 0
-                # Find assistant response
-                assistant_messages = [msg for msg in result if msg.role == "assistant"]
-                assert len(assistant_messages) > 0
-                final_response = assistant_messages[-1].content
+                # Find agent response
+                agent_messages = [msg for msg in result if msg.role == "agent"]
+                assert len(agent_messages) > 0
+                final_response = agent_messages[-1].content
                 assert "20°C" in final_response
                 assert "15°C" in final_response
                 # The workflow reaches max iterations (5) so we expect 3 react calls
