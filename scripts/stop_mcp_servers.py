@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 """
-Stop MCP servers running on their default ports.
+Stop the MCP weather server.
 
-This script attempts to gracefully stop MCP servers and ensures they are
-completely shut down by checking the ports.
+This script gracefully stops the unified MCP weather server running on port 7778.
 """
 import subprocess
 import sys
@@ -11,12 +10,8 @@ import time
 import os
 import signal
 
-# Define the ports used by MCP servers
-MCP_PORTS = {
-    'forecast': 7778,
-    'historical': 7779,
-    'agricultural': 7780,
-}
+# The single MCP server port
+MCP_PORT = 7778
 
 def find_process_by_port(port):
     """Find process ID using a specific port."""
@@ -50,44 +45,32 @@ def kill_process(pid, force=False):
         return False
 
 def main():
-    """Main function to stop all MCP servers."""
-    print("Stopping MCP servers...")
+    """Stop the MCP weather server."""
+    print(f"Checking for MCP weather server on port {MCP_PORT}...")
     
-    servers_found = False
-    
-    for server_name, port in MCP_PORTS.items():
-        print(f"\nChecking {server_name} server on port {port}...")
+    pid = find_process_by_port(MCP_PORT)
+    if pid:
+        print(f"Found server (PID: {pid}), stopping...")
         
-        # Find process using the port
-        pid = find_process_by_port(port)
-        
-        if pid:
-            servers_found = True
-            print(f"  Found {server_name} server (PID: {pid})")
+        # Try graceful termination first
+        if kill_process(pid, force=False):
+            # Wait a moment for graceful shutdown
+            time.sleep(0.5)
             
-            # Try graceful termination first
-            if kill_process(pid, force=False):
-                # Wait a moment for graceful shutdown
+            # Check if still running
+            if find_process_by_port(MCP_PORT):
+                print("Process still running, force killing...")
+                kill_process(pid, force=True)
                 time.sleep(0.5)
-                
-                # Check if still running
-                if find_process_by_port(port):
-                    print(f"  Process still running, force killing...")
-                    kill_process(pid, force=True)
-                    time.sleep(0.5)
-            
-            # Final check
-            if find_process_by_port(port):
-                print(f"  WARNING: Could not stop {server_name} server on port {port}")
-            else:
-                print(f"  Successfully stopped {server_name} server")
+        
+        # Final check
+        if find_process_by_port(MCP_PORT):
+            print(f"WARNING: Could not stop server on port {MCP_PORT}")
+            sys.exit(1)
         else:
-            print(f"  No {server_name} server found on port {port}")
-    
-    if servers_found:
-        print("\nAll MCP servers have been stopped.")
+            print("Server stopped successfully")
     else:
-        print("\nNo MCP servers were running.")
+        print("No MCP server running")
 
 if __name__ == "__main__":
     try:

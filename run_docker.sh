@@ -8,14 +8,56 @@ NC='\033[0m' # No Color
 
 # Parse command line arguments
 RUN_CLIENT=false
+REFRESH_FRONT=false
+REFRESH_WORKER=false
 for arg in "$@"; do
     case $arg in
         --run_client)
             RUN_CLIENT=true
             shift
             ;;
+        --front)
+            REFRESH_FRONT=true
+            shift
+            ;;
+        --worker)
+            REFRESH_WORKER=true
+            shift
+            ;;
     esac
 done
+
+# Handle refresh operations
+if [ "$REFRESH_FRONT" = true ]; then
+    echo -e "${BLUE}🔄 Refreshing API server...${NC}"
+    docker-compose build api
+    docker-compose up -d --no-deps api
+    echo -e "${GREEN}✅ API server refreshed${NC}"
+    exit 0
+fi
+
+if [ "$REFRESH_WORKER" = true ]; then
+    echo -e "${BLUE}🔄 Refreshing worker...${NC}"
+    docker-compose build worker
+    docker-compose up -d --no-deps worker
+    echo -e "${GREEN}✅ Worker refreshed${NC}"
+    
+    # Give it a moment to start
+    sleep 2
+    
+    # Display success message
+    echo -e "${GREEN}✅ Services are running!${NC}"
+    echo ""
+    echo "📍 Available endpoints:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  📡 API Server:        http://localhost:8000"
+    echo "  📚 API Documentation: http://localhost:8000/docs"
+    echo "  🔄 Temporal UI:       http://localhost:8080"
+    echo "  🌦️  Weather Proxy:     http://localhost:8001/mcp"
+    echo "  🎨 Frontend:          http://localhost:3000"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    exit 0
+fi
 
 # Ensure logs directory exists
 mkdir -p logs

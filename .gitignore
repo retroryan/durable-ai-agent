@@ -107,8 +107,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-worker.env
-api.env
 
 # Spyder project settings
 .spyderproject

@@ -63,18 +63,33 @@ class ToolExecutionActivity:
             mcp_config.server_definition
         )
         
-        # Call the MCP tool - wrap args in 'request' for proxy compatibility
-        logger.info(f"Calling MCP tool: {mcp_config.tool_name} with args: {tool_args}")
-        wrapped_args = {"request": tool_args}
+        # Create Pydantic model instance from tool_args
+        # The tool's args_model contains the Pydantic model class
+        model_class = tool.args_model
+        request_instance = model_class(**tool_args)
+        
+        # MCP tools expect {"request": <Pydantic model instance>}
+        mcp_arguments = {"request": request_instance}
+        
+        # Call the MCP tool with the Pydantic model
+        logger.info(f"Calling MCP tool: {mcp_config.tool_name} with Pydantic model: {model_class.__name__}")
         result = await client.call_tool(
             name=mcp_config.tool_name,
-            arguments=wrapped_args
+            arguments=mcp_arguments
         )
         
-        # Process MCP result
-        if hasattr(result, 'content'):
-            # Handle structured responses
-            observation = str(result.content[0].text if result.content else "No result")
+        # Process MCP result with better error handling
+        if hasattr(result, 'content') and result.content:
+            # Properly extract text from content blocks
+            for block in result.content:
+                if hasattr(block, 'text'):
+                    observation = block.text
+                    break
+                elif hasattr(block, 'type') and block.type == "text":
+                    observation = block.text
+                    break
+            else:
+                observation = "No text content in result"
         else:
             observation = str(result)
         

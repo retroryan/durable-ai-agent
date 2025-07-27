@@ -51,9 +51,7 @@ The result is an AI system that not only thinks and reasons like modern LLMs but
 1. **Set up environment files**
    ```bash
    cp .env.example .env
-   cp worker.env .worker.env
    ```
-   **Note**: Make sure `.worker.env` is copied from `worker.env` and is not in the samples. The existing `.env` file should remain as is.
 
 2. **Start all services with the convenience script**
    ```bash
@@ -81,7 +79,7 @@ Docker Compose will start the following services:
 1. Open http://localhost:3000 in your browser - it generates a random user name for now.
 2. Type a message in the input field
 3. The system supports several types of messages of magic string messages (currently hard-coded in workflows/simple_agent_workflow.py):
-   - **"weather:"** - For example try "weather: Are conditions good for planting corn in Ames, Iowa?".  Triggers the full agentic workflow with a fully custom agentic loop modeled off DSPy React. This includes multi-step reasoning, tool selection, action execution, and result synthesis. Currently it is hard-coded to use the tool set from the worker.env configuration. In the future, the first call could be a classification agent which decides which tool set(s) to use.
+   - **"weather:"** - For example try "weather: Are conditions good for planting corn in Ames, Iowa?".  Triggers the full agentic workflow with a fully custom agentic loop modeled off DSPy React. This includes multi-step reasoning, tool selection, action execution, and result synthesis. Currently it is hard-coded to use the tool set from the .env configuration. In the future, the first call could be a classification agent which decides which tool set(s) to use.
    - **"historical"** - Calls the weather historical activity for past weather data
    - **"agriculture"** - Calls the agricultural activity for farming conditions
    - **Any other message** - Defaults to the find_events activity

@@ -1,36 +1,29 @@
 #!/usr/bin/env python
+"""Start the unified MCP weather server."""
 import subprocess
 import signal
 import sys
-import time
 
-processes = []
+process = None
 
 def signal_handler(sig, frame):
-    print('\nStopping all servers...')
-    for p in processes:
-        p.terminate()
+    print('\nStopping server...')
+    if process:
+        process.terminate()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 
-print('Starting all MCP servers...')
-print('Forecast server on http://localhost:7778/mcp')
-print('Historical server on http://localhost:7779/mcp')
-print('Agricultural server on http://localhost:7780/mcp')
-print('')
-print('Press Ctrl+C to stop all servers')
+print('Starting MCP Weather Server...')
+print('Server running on http://localhost:7778/mcp')
+print('Available tools:')
+print('  - get_weather_forecast')
+print('  - get_historical_weather')
+print('  - get_agricultural_conditions')
+print('\nPress Ctrl+C to stop')
 
 try:
-    # Start all servers
-    processes.append(subprocess.Popen(['python', 'mcp_servers/forecast_server.py']))
-    time.sleep(0.5)
-    processes.append(subprocess.Popen(['python', 'mcp_servers/historical_server.py']))
-    time.sleep(0.5)
-    processes.append(subprocess.Popen(['python', 'mcp_servers/agricultural_server.py']))
-    
-    # Wait for all processes
-    for p in processes:
-        p.wait()
+    process = subprocess.Popen(['python', '-m', 'mcp_servers.agricultural_server'])
+    process.wait()
 except KeyboardInterrupt:
     pass

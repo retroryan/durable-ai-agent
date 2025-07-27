@@ -35,8 +35,7 @@ class Settings:
     api_url: str = os.getenv("API_URL", "http://localhost:8000")
 
     # MCP settings
-    mcp_proxy_mode: bool = os.getenv("MCP_PROXY_MODE", "true").lower() == "true"
-    mcp_proxy_url: str = os.getenv("MCP_PROXY_URL", "http://weather-proxy:8000/mcp")
+    mcp_server_url: str = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
 
     # Logging
     log_level: str = os.getenv("LOG_LEVEL", "INFO")

@@ -28,12 +28,7 @@ This will start:
 
 ### 2. Configure Local API Environment
 
-The `api.env` file contains the necessary configuration:
-
-```bash
-TEMPORAL_ADDRESS=localhost:7233
-TEMPORAL_NAMESPACE=default
-```
+The `.env` file contains all the necessary configuration. When running locally, the script will override `TEMPORAL_ADDRESS` to use `localhost:7233` instead of the Docker service name.
 
 ### 3. Run API Server Locally
 
@@ -44,8 +39,10 @@ Use the provided script to run the API server:
 ```
 
 This script will:
-- Load environment variables from `api.env`
+- Load environment variables from `.env`
+- Override `TEMPORAL_ADDRESS` to `localhost:7233` for local development
 - Start the API server on port 8000
+- Start the frontend development server on port 3000
 - Enable hot reload for development
 
 ### Alternative: Manual Run
@@ -54,7 +51,10 @@ You can also run the API server manually:
 
 ```bash
 # Load environment variables
-export $(cat api.env | grep -v '^#' | xargs)
+export $(cat .env | grep -v '^#' | xargs)
+
+# Override for local development
+export TEMPORAL_ADDRESS=localhost:7233
 
 # Run with poetry
 poetry run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000

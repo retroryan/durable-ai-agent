@@ -4,41 +4,15 @@ Production-ready AI agents with automatic checkpointing, seamless recovery, and 
 
 ## Overview
 
-This framework introduces a new architecture for production-grade AI agents that survive failures, restarts, and long-running operations. Built on Temporal's durable execution, it provides the resilience, scalability, and observability needed for reliable agentic systems in real-world business processes.
+The durable-ai-agent represents a fundamental evolution in building reliable AI agents. By combining DSPy's context engineering, Temporal's durable execution, and modern MCP integration, it demonstrates how to build production-ready agentic AI applications that go beyond traditional prompt engineering to deliver agents that reason systematically, execute tools autonomously, and maintain state through failures while ensuring every decision is traceable and every action is durable.
 
-## The Problem: Production AI Reliability
-
-AI agent frameworks make it easy to build intelligent automation, but there's a critical gap between getting started quickly and achieving production reliability. The core issue: AI agents are distributed systems in disguise. Every tool call faces state persistence challenges, partial failures, and cascading timeouts. Current frameworks offer limited solutions: restart and lose progress, or build complex recovery systems. 
-
-This creates real problems:
-
-**Wasted resources**: Failed LLM calls burn API credits without delivering value
-
-**Development burden**: Engineers implement state management and retry logic instead of agent features
-
-**Reliability gaps**: Mid-task failures leave incomplete results, limiting use for critical operations
-
-## Core Architecture: Durable Agentic Loop
-
-We solve this by integrating three cutting-edge technologies to create a resilient architecture that separates thinking from acting:
-
-**Technologies**:
+**Key Technologies**:
 
 * **Temporal's Durable Execution**: Workflows that maintain state across failures with stateless workers that scale infinitely
 
 * **DSPy's Context Engineering**: Structured, type-safe reasoning with declarative signatures—moving beyond brittle prompt engineering
 
 * **MCP Integration**: Seamless tool orchestration with built-in support for weather forecasting, historical data, and agricultural analysis
-
-**Architecture**:
-
-* **Thinking (DSPy)**: The agent reasons through problems using structured modules
-
-* **Acting (Temporal Activities)**: Tool execution is isolated and independently durable
-
-* **Orchestration (Temporal Workflows)**: The overall process is checkpointed and resumable
-
-This separation ensures transparency, traceability, and resilience to transient failures at any layer.
 
 ## Deep Dive Articles
 
@@ -62,7 +36,6 @@ cd durable-ai-agent
 
 # Set up environment files
 cp .env.example .env
-cp worker.env .worker.env
 
 # Start all services
 ./run_docker.sh

@@ -109,38 +109,23 @@ services:
     profiles:
       - api_server
 
-  forecast-mcp:
+  mcp-server:
     build:
       context: .
-      dockerfile: docker/Dockerfile.forecast
-    container_name: durable-forecast-mcp
+      dockerfile: docker/Dockerfile.mcp
+    container_name: durable-mcp-server
     ports:
       - "7778:7778"
     networks:
       - durable-network
+    env_file:
+      - .env
+    environment:
+      - MOCK_WEATHER=${MOCK_WEATHER:-true}
     volumes:
       - ./mcp_servers:/app/mcp_servers
       - ./logs:/app/logs
-    command: python -m mcp_servers.forecast_server
-    profiles:
-      - forecast
-
-  weather-proxy:
-    build:
-      context: .
-      dockerfile: mcp_proxy/Dockerfile
-    container_name: durable-weather-proxy
-    ports:
-      - "8001:8000"
-    networks:
-      - durable-network
-    env_file:
-      - .env
-    volumes:
-      - ./logs:/app/logs
-    command: python -m mcp_proxy.simple_proxy
-    profiles:
-      - weather_proxy
+    command: python -m mcp_servers.agricultural_server
 
 networks:
   durable-network:

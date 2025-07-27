@@ -52,38 +52,20 @@ class MCPTool(BaseTool, ABC):
         """
         Get MCP configuration for this tool via HTTP transport.
         
-        Tool name resolution:
-        - HTTP proxy mode: Tool names are prefixed (e.g., "forecast_get_weather_forecast")
-        - HTTP direct mode: Tool names are unprefixed (e.g., "get_weather_forecast")
+        All weather tools now use the single consolidated server.
+        Tool names are always unprefixed (e.g., "get_weather_forecast").
         
         Returns:
-            MCPConfig containing server details and dynamically computed tool name.
+            MCPConfig containing server details and tool name.
         """
-        # HTTP mode configuration
-        use_proxy = os.getenv("MCP_USE_PROXY", "true").lower() == "true"
+        # Single server URL for all agriculture tools
+        url = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
         
-        # Compute tool name based on proxy usage
-        if use_proxy:
-            # Proxy mode: FastMCP mount() prefixes tool names with server name
-            tool_name = f"{self.mcp_server_name}_{self.NAME}"
-            url = os.getenv("MCP_URL", "http://weather-proxy:8000/mcp")
-        else:
-            # Direct mode: Use unprefixed tool name and server-specific URL
-            tool_name = self.NAME
-            # Map server names to their direct URLs
-            server_urls = {
-                "forecast": os.getenv("MCP_FORECAST_URL", "http://localhost:7778/mcp"),
-                "historical": os.getenv("MCP_HISTORICAL_URL", "http://localhost:7779/mcp"),
-                "agricultural": os.getenv("MCP_AGRICULTURAL_URL", "http://localhost:7780/mcp"),
-            }
-            # Get the URL for this specific server, fallback to MCP_URL if not found
-            url = server_urls.get(self.mcp_server_name, os.getenv("MCP_URL", "http://localhost:7778/mcp"))
-            
         return MCPConfig(
-            server_name=self.mcp_server_name,
-            tool_name=tool_name,
+            server_name="weather-mcp",
+            tool_name=self.NAME,  # Always use unprefixed tool name
             server_definition=MCPServerDefinition(
-                name=f"mcp-{self.mcp_server_name}",
+                name="weather-mcp",
                 connection_type="http",
                 url=url
             )

@@ -80,7 +80,7 @@ class LLMConfig(BaseModel):
     """Configuration for setting up the LLM."""
 
     provider: str = Field(
-        default_factory=lambda: os.getenv("LLM_PROVIDER", os.getenv("DSPY_PROVIDER", "ollama")),
+        default_factory=lambda: os.getenv("LLM_PROVIDER", "ollama"),
         description="LLM provider",
     )
     temperature: float = Field(

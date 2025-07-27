@@ -1,21 +1,26 @@
 #!/bin/bash
 set -e
 
-# Script to run the API server locally with environment settings from api.env
+# Script to run the API server locally with environment settings from .env
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
-# Load environment variables from api.env
-if [ -f "$PROJECT_ROOT/api.env" ]; then
-    echo "Loading environment from api.env..."
-    export $(cat "$PROJECT_ROOT/api.env" | grep -v '^#' | xargs)
+# Load environment variables from .env
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    echo "Loading environment from .env..."
+    export $(cat "$PROJECT_ROOT/.env" | grep -v '^#' | xargs)
 else
-    echo "Error: api.env file not found in $PROJECT_ROOT"
-    echo "Please create api.env file with required configuration"
+    echo "Error: .env file not found in $PROJECT_ROOT"
+    echo "Please create .env file with required configuration"
+    echo "You can copy .env.example as a starting point: cp .env.example .env"
     exit 1
 fi
+
+# Override TEMPORAL_ADDRESS for local development
+export TEMPORAL_ADDRESS="localhost:7233"
+echo "Note: Overriding TEMPORAL_ADDRESS to localhost:7233 for local development"
 
 # Change to project root
 cd "$PROJECT_ROOT"

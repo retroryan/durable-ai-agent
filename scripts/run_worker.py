@@ -21,8 +21,8 @@ from workflows.agentic_ai_workflow import AgenticAIWorkflow
 
 
 async def main():
-    # Load environment variables from worker.env
-    load_dotenv("worker.env", override=True)
+    # Load environment variables from .env
+    load_dotenv(".env", override=True)
 
     # Initialize logging
     log_file = setup_file_logging("worker", log_level=logging.INFO)

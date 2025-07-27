@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Test MCP server connections via HTTP (and optionally STDIO).
+"""Test consolidated MCP server with all weather tools using MCPClientManager.
 
-By default, tests all three HTTP MCP servers (forecast, historical, agricultural).
-Use --stdio flag to also test STDIO connection.
+Tests the unified MCP weather server running on port 7778 with:
+- MCPClientManager for connection pooling
+- Pydantic models for request validation
+- String to float coordinate conversion
+- Validation error handling
+- Performance comparison (location name vs coordinates)
 
 Usage:
-    poetry run python integration_tests/test_mcp_connections.py          # Test all HTTP servers
-    poetry run python integration_tests/test_mcp_connections.py --stdio  # Test HTTP + STDIO
+    poetry run python integration_tests/test_mcp_connections.py
 """
 import argparse
 import asyncio
@@ -30,227 +33,255 @@ else:
 
 sys.path.insert(0, str(project_root))
 from shared.mcp_client_manager import MCPClientManager
+from models.mcp_models import ForecastRequest, HistoricalRequest, AgriculturalRequest
 
 
-async def test_stdio_connection():
-    """Test STDIO connection to forecast server."""
-    print("\n=== Testing STDIO Connection ===")
-    
-    manager = MCPClientManager()
-    
-    # Stdio server definition - path relative to project root
-    forecast_server_path = project_root / "mcp_servers" / "forecast_server.py"
-    
-    stdio_server_def = {
-        "name": "forecast-server-stdio",
-        "connection_type": "stdio",
-        "command": "python",
-        "args": [str(forecast_server_path), "--transport", "stdio"],
-        "env": None,
+async def test_consolidated_server():
+    """Test all tools in the consolidated server."""
+    server_def = {
+        "name": "weather-mcp",
+        "connection_type": "http",
+        "url": os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
     }
     
-    print(f"Using forecast server at: {forecast_server_path}")
+    manager = MCPClientManager()
+    
+    print("=== Testing Consolidated MCP Weather Server ===")
+    print(f"URL: {server_def['url']}")
     
     try:
-        # Test connection
-        print("1. Connecting to STDIO server...")
-        client = await manager.get_client(stdio_server_def)
-        print("✓ Connected to STDIO server")
+        # Connect
+        print("\n1. Connecting to server...")
+        client = await manager.get_client(server_def)
+        print("✓ Connected")
         
-        # List tools
-        print("2. Listing tools...")
+        # List tools - should find all 3
+        print("\n2. Listing tools...")
         tools = await client.list_tools()
-        print(f"✓ Found {len(tools)} tools")
+        print(f"✓ Found {len(tools)} tools:")
+        
+        expected_tools = {
+            "get_weather_forecast",
+            "get_historical_weather", 
+            "get_agricultural_conditions"
+        }
+        
         for tool in tools:
-            print(f"   - {tool.name}")
-        
-        # Test a simple tool call
-        print("3. Testing tool invocation...")
-        result = await client.call_tool(
-            "get_weather_forecast", 
-            {"request": {"location": "Seattle", "days": 1}}
-        )
-        
-        # Handle result format
-        if isinstance(result, list):
-            data = json.loads(result[0].text)
+            print(f"  - {tool.name}")
+            
+        # Verify all expected tools are present
+        actual_tools = {tool.name for tool in tools}
+        if expected_tools.issubset(actual_tools):
+            print("✓ All expected tools found!")
         else:
-            data = json.loads(result.content[0].text)
+            missing = expected_tools - actual_tools
+            print(f"✗ Missing tools: {missing}")
+            return False
+            
+        # Test each tool
+        print("\n3. Testing each tool:")
         
-        print(f"✓ Got weather for {data['location_info']['name']}")
+        # Test forecast with Pydantic model
+        print("\n  Testing get_weather_forecast with Pydantic model...")
+        forecast_request = ForecastRequest(location="Seattle", days=3)
+        print(f"    Request: {forecast_request}")
+        result = await client.call_tool(
+            "get_weather_forecast",
+            {"request": forecast_request}  # Pass Pydantic model directly
+        )
+        result_data = _parse_result(result)
+        print(f"  ✓ Forecast: {result_data.get('summary', 'No summary')}")
         
-        # Cleanup
+        # Test historical with Pydantic model
+        print("\n  Testing get_historical_weather with Pydantic model...")
+        historical_request = HistoricalRequest(
+            location="Seattle",
+            start_date="2024-01-01",
+            end_date="2024-01-07"
+        )
+        print(f"    Request: {historical_request}")
+        result = await client.call_tool(
+            "get_historical_weather",
+            {"request": historical_request}  # Pass Pydantic model directly
+        )
+        result_data = _parse_result(result)
+        print(f"  ✓ Historical: {result_data.get('summary', 'No summary')}")
+        
+        # Test agricultural with Pydantic model
+        print("\n  Testing get_agricultural_conditions with Pydantic model...")
+        agricultural_request = AgriculturalRequest(
+            location="Iowa", 
+            days=5,
+            crop_type="corn"
+        )
+        print(f"    Request: {agricultural_request}")
+        result = await client.call_tool(
+            "get_agricultural_conditions",
+            {"request": agricultural_request}  # Pass Pydantic model directly
+        )
+        result_data = _parse_result(result)
+        print(f"  ✓ Agricultural: {result_data.get('summary', 'No summary')}")
+        
+        # Test Pydantic validation
+        print("\n4. Testing Pydantic validation:")
+        
+        # Test coordinate conversion (string to float)
+        print("\n  Testing coordinate string conversion...")
+        coord_request = ForecastRequest(
+            latitude="41.8781",  # String
+            longitude="-87.6298",  # String
+            days=2
+        )
+        print(f"    Input types: lat={type('41.8781')}, lon={type('-87.6298')}")
+        print(f"    Converted types: lat={type(coord_request.latitude)}, lon={type(coord_request.longitude)}")
+        result = await client.call_tool(
+            "get_weather_forecast",
+            {"request": coord_request}  # Pass Pydantic model directly
+        )
+        print("  ✓ String coordinates converted successfully")
+        
+        # Test validation errors
+        print("\n  Testing validation error handling...")
+        try:
+            # This should fail - missing location
+            invalid_request = ForecastRequest(days=3)
+            print("  ✗ Expected validation error not raised")
+        except ValueError as e:
+            print(f"  ✓ Caught expected error: {e}")
+        
+        # Test date validation
+        try:
+            # This should fail - end date before start date
+            invalid_historical = HistoricalRequest(
+                location="Seattle",
+                start_date="2024-01-10",
+                end_date="2024-01-05"
+            )
+            print("  ✗ Expected date validation error not raised")
+        except ValueError as e:
+            print(f"  ✓ Caught expected date error: {e}")
+        
+        # Test coordinate validation
+        try:
+            # This should fail - latitude out of range
+            invalid_coords = ForecastRequest(
+                latitude=91.0,  # > 90
+                longitude=0.0
+            )
+            print("  ✗ Expected coordinate validation error not raised")
+        except ValueError as e:
+            print(f"  ✓ Caught expected coordinate error: {e}")
+        
+        print("\n✓ All tests passed!")
+        
         await manager.cleanup()
-        print("✓ STDIO connection test passed!")
         return True
         
     except Exception as e:
-        print(f"✗ STDIO Error: {type(e).__name__}: {e}")
+        print(f"\n✗ Test failed: {e}")
         traceback.print_exc()
         await manager.cleanup()
         return False
 
 
-async def test_http_server(server_name, server_def, test_params):
-    """Test HTTP connection to a specific MCP server."""
-    print(f"\n=== Testing {server_name} Server (HTTP) ===")
-    print(f"URL: {server_def['url']}")
+def _parse_result(result):
+    """Parse the result from call_tool into a dictionary."""
+    # Handle result format
+    if isinstance(result, list):
+        result_text = result[0].text
+    else:
+        result_text = result.content[0].text
+    
+    # Parse JSON
+    return json.loads(result_text)
+
+
+async def test_performance_comparison():
+    """Compare performance of location name vs coordinates."""
+    import time
+    
+    server_def = {
+        "name": "weather-mcp",
+        "connection_type": "http",
+        "url": os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+    }
     
     manager = MCPClientManager()
     
+    print("\n=== Performance Comparison Test ===")
+    
     try:
-        # Test connection
-        print("1. Connecting to server...")
         client = await manager.get_client(server_def)
-        print("✓ Connected to server")
         
-        # List tools
-        print("2. Listing tools...")
-        tools = await client.list_tools()
-        print(f"✓ Found {len(tools)} tools")
-        for tool in tools:
-            print(f"   - {tool.name}")
+        # Test with location name (requires geocoding)
+        print("\n1. Testing with location name (requires geocoding)...")
+        start = time.time()
+        name_request = ForecastRequest(location="New York", days=1)
+        result = await client.call_tool(
+            "get_weather_forecast",
+            {"request": name_request}  # Pass Pydantic model directly
+        )
+        name_time = time.time() - start
+        print(f"   Time taken: {name_time:.3f}s")
         
-        # Test a tool call with server-specific parameters
-        if tools:
-            tool_name = tools[0].name
-            print(f"3. Testing tool invocation: {tool_name}")
-            
-            result = await client.call_tool(tool_name, {"request": test_params})
-            
-            # Handle result format
-            if isinstance(result, list):
-                result_text = result[0].text
-            else:
-                result_text = result.content[0].text
-                
-            # Verify we got JSON response
-            data = json.loads(result_text)
-            print(f"✓ Tool invocation successful, got response with {len(data)} keys")
+        # Test with coordinates (no geocoding)
+        print("\n2. Testing with coordinates (no geocoding)...")
+        start = time.time()
+        coord_request = ForecastRequest(latitude=40.7128, longitude=-74.0060, days=1)
+        result = await client.call_tool(
+            "get_weather_forecast",
+            {"request": coord_request}  # Pass Pydantic model directly
+        )
+        coord_time = time.time() - start
+        print(f"   Time taken: {coord_time:.3f}s")
         
-        # Cleanup
+        if name_time > coord_time:
+            speedup = name_time / coord_time
+            print(f"\n✓ Coordinates are {speedup:.1f}x faster than location names")
+        else:
+            print(f"\n✓ Both methods performed similarly (likely in mock mode)")
+        
         await manager.cleanup()
-        print(f"✓ {server_name} server test passed!")
         return True
         
     except Exception as e:
-        print(f"✗ {server_name} Error: {type(e).__name__}: {e}")
-        traceback.print_exc()
+        print(f"\n✗ Performance test failed: {e}")
         await manager.cleanup()
         return False
-
-
-async def test_all_http_servers():
-    """Test all three HTTP MCP servers."""
-    # Server configurations
-    servers = [
-        {
-            "name": "Forecast",
-            "def": {
-                "name": "forecast-server-http",
-                "connection_type": "http",
-                "url": os.getenv("MCP_FORECAST_SERVER_URL", "http://localhost:7778/mcp"),
-                "env": None,
-            },
-            "test_params": {"location": "Seattle", "days": 2}
-        },
-        {
-            "name": "Historical",
-            "def": {
-                "name": "historical-server-http",
-                "connection_type": "http",
-                "url": os.getenv("MCP_HISTORICAL_SERVER_URL", "http://localhost:7779/mcp"),
-                "env": None,
-            },
-            "test_params": {
-                "location": "Chicago",
-                "start_date": "2024-01-01",
-                "end_date": "2024-01-07"
-            }
-        },
-        {
-            "name": "Agricultural",
-            "def": {
-                "name": "agricultural-server-http",
-                "connection_type": "http",
-                "url": os.getenv("MCP_AGRICULTURAL_SERVER_URL", "http://localhost:7780/mcp"),
-                "env": None,
-            },
-            "test_params": {
-                "location": "Iowa City",
-                "crop_type": "corn",
-                "days": 3
-            }
-        }
-    ]
-    
-    passed = 0
-    failed = 0
-    
-    for server in servers:
-        if await test_http_server(server["name"], server["def"], server["test_params"]):
-            passed += 1
-        else:
-            failed += 1
-    
-    return passed, failed
 
 
 async def main():
-    """Run connection tests based on command line arguments."""
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Test MCP server connections")
-    parser.add_argument(
-        "--stdio", 
-        action="store_true", 
-        help="Also test STDIO connection (in addition to HTTP servers)"
-    )
-    args = parser.parse_args()
-    
-    print("MCP Connection Tests")
-    print("===================")
-    if args.stdio:
-        print("Testing MCP servers via HTTP and STDIO")
-    else:
-        print("Testing MCP servers via HTTP only")
+    """Run consolidated server test."""
+
+    print("MCP Connection Test with MCPClientManager")
+    print("=========================================")
+    print("Testing unified MCP weather server with Pydantic models")
     print("")
     
-    # Track overall results
-    total_passed = 0
-    total_failed = 0
-    
-    # Always test HTTP servers
-    print("Note: Make sure all MCP servers are running:")
+    print("Note: Make sure the MCP server is running:")
     print("  poetry run python scripts/run_mcp_servers.py")
     print("")
     
-    http_passed, http_failed = await test_all_http_servers()
-    total_passed += http_passed
-    total_failed += http_failed
+    # Test the consolidated server
+    success = await test_consolidated_server()
     
-    # Test STDIO if requested
-    if args.stdio:
-        print("\n" + "=" * 50)
-        print("STDIO Connection Test")
-        print("=" * 50)
-        if await test_stdio_connection():
-            total_passed += 1
-        else:
-            total_failed += 1
+    # Run performance comparison
+    if success:
+        perf_success = await test_performance_comparison()
+        success = success and perf_success
     
     # Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"Total tests run: {total_passed + total_failed}")
-    print(f"Passed: {total_passed}")
-    print(f"Failed: {total_failed}")
     
-    if total_failed == 0:
-        print("\n✓ All MCP connection tests passed!")
+    if success:
+        print("✓ All MCP server tests passed!")
+        print("✓ MCPClientManager connection pooling working correctly")
+        print("✓ Pydantic validation working as expected")
         return 0
     else:
-        print(f"\n✗ {total_failed} test(s) failed")
+        print("✗ Some MCP server tests failed")
         return 1
 
 

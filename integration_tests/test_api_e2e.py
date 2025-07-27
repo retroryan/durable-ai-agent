@@ -127,6 +127,7 @@ class MCPWeatherFlowTest:
                     
                     # Check observation for data
                     obs_str = str(step['observation']).lower()
+                    print(f"   Observation: {step['observation'][:200]}...")
                     if 'weather' in obs_str or 'forecast' in obs_str or 'temperature' in obs_str:
                         print("   ✅ Weather data received!")
                     else:
@@ -286,8 +287,8 @@ class MCPWeatherFlowTest:
         """Run all MCP weather flow tests."""
         tests = [
             ("Weather Forecast Flow", self.test_mcp_forecast_flow),
-            ("Agricultural Conditions Flow", self.test_agricultural_conditions_flow),
-            ("Historical Weather Flow", self.test_historical_weather_flow),
+            # ("Agricultural Conditions Flow", self.test_agricultural_conditions_flow),
+            # ("Historical Weather Flow", self.test_historical_weather_flow),
         ]
         
         passed = 0

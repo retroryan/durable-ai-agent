@@ -198,19 +198,19 @@ Configure your LLM provider in the `.env` file:
 
 #### Ollama (Local - Default)
 ```bash
-DSPY_PROVIDER=ollama
+LLM_PROVIDER=ollama
 OLLAMA_MODEL=gemma3:27b
 ```
 
 #### Claude (Anthropic)
 ```bash
-DSPY_PROVIDER=claude
+LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=your-api-key-here
 ```
 
 #### OpenAI
 ```bash
-DSPY_PROVIDER=openai
+LLM_PROVIDER=openai
 OPENAI_API_KEY=your-api-key-here
 ```
 
@@ -228,7 +228,7 @@ See `.env.sample` for all available configuration options. Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DSPY_PROVIDER` | LLM provider (`ollama`, `claude`, `openai`) | `ollama` |
+| `LLM_PROVIDER` | LLM provider (`ollama`, `claude`, `openai`) | `ollama` |
 | `OLLAMA_MODEL` | Ollama model name | `gemma3:27b` |
 | `LLM_TEMPERATURE` | Generation temperature | `0.7` |
 | `LLM_MAX_TOKENS` | Maximum tokens | `1024` |

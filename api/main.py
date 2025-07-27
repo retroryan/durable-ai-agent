@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from temporalio.client import Client
 
 from api.services.workflow_service import WorkflowService
-from models.trajectory import summarize_trajectories
+from models.trajectory import Trajectory
 from models.types import Response, WorkflowInput, WorkflowState, AgenticAIWorkflowState
 from models.api_models import (
     SendMessageRequest, SendMessageResponse,
@@ -320,12 +320,12 @@ async def get_ai_workflow_trajectories(workflow_id: str):
         
         logger.info(
             f"Retrieved trajectories for workflow_id: {workflow_id}, "
-            f"summary: {summarize_trajectories(trajectories) if trajectories else 'No trajectories'}"
+            f"summary: {Trajectory.summarize_trajectories(trajectories) if trajectories else 'No trajectories'}"
         )
         return {
             "workflow_id": workflow_id,
             "trajectories": trajectories,
-            "summary": summarize_trajectories(trajectories) if trajectories else None
+            "summary": Trajectory.summarize_trajectories(trajectories) if trajectories else None
         }
         
     except HTTPException:

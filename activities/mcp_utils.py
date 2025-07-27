@@ -17,94 +17,26 @@ def get_user_display_name(user_name: str) -> str:
     )
 
 
-def is_proxy_mode_enabled() -> bool:
-    """Check if proxy mode is enabled via environment variable."""
-    return os.getenv("MCP_PROXY_MODE", "false").lower() in ("true", "1", "yes")
-
-
-def get_proxy_url() -> str:
-    """Get proxy URL from environment variable."""
-    return os.getenv("MCP_PROXY_URL", "http://weather-proxy:8000/mcp")
-
-
-def get_mcp_server_config(service_name: str) -> Dict[str, str]:
+def get_mcp_server_config(service_name: str = None) -> Dict[str, str]:
     """Get MCP server configuration from environment variables.
 
     Args:
-        service_name: Service name (forecast, historical, agricultural)
+        service_name: Not used anymore - kept for compatibility
 
     Returns:
         Dictionary with server configuration
     """
-    # Check if proxy mode is enabled
-    if is_proxy_mode_enabled():
-        proxy_url = get_proxy_url()
-        return {"host": "proxy", "port": "proxy", "url": proxy_url}
-
-    # Direct mode configuration
-    service_configs = {
-        "forecast": {
-            "host_var": "MCP_FORECAST_SERVER_HOST",
-            "port_var": "MCP_FORECAST_SERVER_PORT",
-            "url_var": "MCP_FORECAST_SERVER_URL",
-            "default_host": "forecast-mcp",
-            "default_port": "7778",
-        },
-        "historical": {
-            "host_var": "MCP_HISTORICAL_SERVER_HOST",
-            "port_var": "MCP_HISTORICAL_SERVER_PORT",
-            "url_var": "MCP_HISTORICAL_SERVER_URL",
-            "default_host": "historical-mcp",
-            "default_port": "7779",
-        },
-        "agricultural": {
-            "host_var": "MCP_AGRICULTURAL_SERVER_HOST",
-            "port_var": "MCP_AGRICULTURAL_SERVER_PORT",
-            "url_var": "MCP_AGRICULTURAL_SERVER_URL",
-            "default_host": "agricultural-mcp",
-            "default_port": "7780",
-        },
-    }
-
-    if service_name not in service_configs:
-        raise ValueError(f"Unknown service: {service_name}")
-
-    config = service_configs[service_name]
-    host = os.getenv(config["host_var"], config["default_host"])
-    port = os.getenv(config["port_var"], config["default_port"])
-    url = os.getenv(config["url_var"], f"http://{host}:{port}/mcp")
-
-    return {"host": host, "port": port, "url": url}
+    # Single unified server configuration
+    url = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+    return {"host": "mcp-server", "port": "7778", "url": url}
 
 
-def get_proxy_tool_name(service_name: str, tool_name: str) -> str:
-    """Get the prefixed tool name for proxy mode.
-
-    Args:
-        service_name: Service name (forecast, historical, agricultural)
-        tool_name: Original tool name
-
-    Returns:
-        Prefixed tool name for proxy mode
-    """
-    # Map service names to proxy prefixes based on proxy architecture
-    service_prefix_map = {
-        "forecast": "forecast",
-        "historical": "historical",
-        "agricultural": "agricultural",
-    }
-
-    if service_name not in service_prefix_map:
-        raise ValueError(f"Unknown service for proxy: {service_name}")
-
-    prefix = service_prefix_map[service_name]
-    return f"{prefix}_{tool_name}"
-
-
-def create_http_server_def(service_name: str, mcp_url: str) -> Dict[str, Any]:
+def create_http_server_def(service_name: str = None, mcp_url: str = None) -> Dict[str, Any]:
     """Create HTTP server definition for MCP client."""
+    if not mcp_url:
+        mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
     return {
-        "name": f"{service_name}-server-http",
+        "name": "weather-mcp",
         "connection_type": "http",
         "url": mcp_url,
         "env": None,
@@ -142,7 +74,7 @@ async def call_mcp_tool(
     """Generic function to call an MCP tool.
 
     Args:
-        service_name: Name of the MCP service (forecast, historical, agricultural)
+        service_name: Not used anymore - kept for compatibility
         tool_name: Name of the tool to call
         tool_args: Arguments to pass to the tool
         user_name: User making the request
@@ -151,40 +83,34 @@ async def call_mcp_tool(
         Parsed result from the tool call
     """
     # Get server configuration
-    config = get_mcp_server_config(service_name)
+    config = get_mcp_server_config()
     mcp_url = config["url"]
-
-    # Determine the actual tool name to call (with prefix for proxy mode)
-    actual_tool_name = tool_name
-    if is_proxy_mode_enabled():
-        actual_tool_name = get_proxy_tool_name(service_name, tool_name)
 
     # Get activity info for context
     info = activity.info()
     workflow_id = info.workflow_id
 
     # Log the activity execution with user context
-    mode = "proxy" if is_proxy_mode_enabled() else "direct"
     activity.logger.info(
-        f"User '{user_name}' (workflow: {workflow_id}) calling {actual_tool_name} on {service_name} via {mode} mode at {mcp_url}"
+        f"User '{user_name}' (workflow: {workflow_id}) calling {tool_name} at {mcp_url}"
     )
 
     # Create MCP client manager
     manager = MCPClientManager()
 
-    # HTTP server definition - use "proxy" as service name in proxy mode
-    effective_service_name = "proxy" if is_proxy_mode_enabled() else service_name
-    http_server_def = create_http_server_def(effective_service_name, mcp_url)
+    # Create server definition
+    http_server_def = create_http_server_def(mcp_url=mcp_url)
 
     try:
         # Get client connection
         client = await manager.get_client(http_server_def)
         activity.logger.info(
-            f"Successfully connected to {effective_service_name} MCP server"
+            f"Successfully connected to MCP server"
         )
 
-        # Call the tool
-        result = await client.call_tool(actual_tool_name, tool_args)
+        # Call the tool directly - tool_args should already be properly formatted
+        # as {"request": <Pydantic model>} by the caller
+        result = await client.call_tool(tool_name, tool_args)
 
         # Parse and return result
         data = parse_mcp_result(result)
@@ -196,7 +122,7 @@ async def call_mcp_tool(
 
     except Exception as e:
         activity.logger.error(
-            f"Error calling {actual_tool_name} on {service_name}: {e}"
+            f"Error calling {tool_name}: {e}"
         )
 
         # Cleanup on error

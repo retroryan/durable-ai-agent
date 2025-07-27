@@ -93,7 +93,7 @@ def test_ollama_connectivity():
         )
         return True
 
-    ollama_base_url = os.getenv("LLM_BASE_URL", "http://host.docker.internal:11434")
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 
     logging.info(f"Testing Ollama connectivity to {ollama_base_url}")
 

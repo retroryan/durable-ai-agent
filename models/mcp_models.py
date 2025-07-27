@@ -127,3 +127,6 @@ class AgriculturalRequest(LocationInput):
     days: int = Field(
         default=7, ge=1, le=7, description="Number of forecast days (1-7)"
     )
+    crop_type: Optional[str] = Field(
+        default=None, description="Type of crop for specialized agricultural conditions"
+    )
