@@ -136,7 +136,7 @@ class WorkflowStatus:
     INITIALIZED = "initialized"
     RUNNING_REACT_LOOP = "running_react_loop"
     EXTRACTING_ANSWER = "extracting_answer"
-    COMPLETED = "completed"
+    WAITING_FOR_INPUT = "waiting_for_input"  # Workflow is idle, ready for next message
     FAILED = "failed"
 
 

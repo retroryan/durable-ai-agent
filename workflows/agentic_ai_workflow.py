@@ -129,7 +129,11 @@ class AgenticAIWorkflow:
                 f"[AgenticAIWorkflow] Prompt processed successfully. Tools used: {', '.join(tools_used) if tools_used else 'None'}, "
                 f"Execution time: {execution_time:.2f}s"
             )
-            self.workflow_status = WorkflowStatus.COMPLETED
+            # Set status to waiting for next message. This is different from chat_ended:
+            # - WAITING_FOR_INPUT: Workflow is idle but still running, ready for more messages
+            # - chat_ended=True: Workflow will terminate and return conversation history
+            self.workflow_status = WorkflowStatus.WAITING_FOR_INPUT
+            # Remove the processed prompt from the queue
             prompt = self.prompt_queue.popleft()
 
         except Exception as e:
