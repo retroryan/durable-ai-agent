@@ -9,6 +9,7 @@ from temporalio.service import RPCError
 
 from models.types import ActivityStatus, Response, WorkflowState
 from workflows.agentic_ai_workflow import AgenticAIWorkflow
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class WorkflowService:
                 AgenticAIWorkflow.run,
                 id=workflow_id,
                 task_queue=self.task_queue,
+                workflow_execution_timeout=timedelta(minutes=30),
             )
             # Send initial message via signal
             await handle.signal("prompt", message)
