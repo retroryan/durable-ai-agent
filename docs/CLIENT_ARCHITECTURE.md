@@ -81,11 +81,12 @@ sequenceDiagram
     loop Every 1 second
         Frontend->>API: GET /workflow/{id}/status
         API->>Workflow: Query "state"
-        Workflow-->>API: Return current state
-        API-->>Frontend: {status, last_response, ...}
-        Frontend->>Frontend: Check if new response
-        alt New response available
-            Frontend->>Frontend: Add to messages
+        Workflow-->>API: Return current state with conversation_history
+        API-->>Frontend: {status, conversation_history, last_response}
+        Frontend->>Frontend: Check conversation_history for new messages
+        alt New agent messages found (id > lastSeenMessageId)
+            Frontend->>Frontend: Add new agent messages to UI
+            Frontend->>Frontend: Update lastSeenMessageId
         end
     end
 ```
@@ -131,24 +132,24 @@ sequenceDiagram
 ```javascript
 {
   workflowId: string | null,        // Current workflow ID
-  messages: Message[],              // Conversation messages
+  messages: Message[],              // All displayed messages (user and agent)
   isLoading: boolean,               // Loading state
   error: string | null,             // Error message
-  workflowStatus: string | null,    // Workflow status
+  workflowStatus: string | null,    // Workflow status from backend
   userName: string,                 // Generated user name
-  lastSeenMessageIdRef: ref         // Tracks highest message ID seen
+  lastSeenMessageIdRef: useRef(0)   // Tracks highest message ID seen for deduplication
 }
 ```
 
 ### Workflow State (AgenticAIWorkflow)
 ```python
 {
-  prompt_queue: Deque[str],         # Queued messages to process
-  conversation_history: List,       # Full conversation history
-  chat_ended: bool,                 # Termination flag
-  workflow_status: WorkflowStatus,  # Current status
-  trajectories: List[Trajectory],   # AI reasoning steps
-  message_id_counter: int           # Sequential message ID generator
+  prompt_queue: Deque[str],              # Queued messages to process
+  conversation_history: ConversationHistory,  # List[Message] with all messages
+  chat_ended: bool,                      # Termination flag
+  workflow_status: WorkflowStatus,       # Current processing status
+  trajectories: List[Trajectory],        # AI reasoning steps
+  message_id_counter: int                # Sequential message ID generator (starts at 0)
 }
 ```
 
@@ -156,10 +157,13 @@ sequenceDiagram
 ```python
 class Message:
     id: int                         # Sequential ID (1, 2, 3, ...)
-    role: MessageRole               # user, agent, or system
+    role: MessageRole               # Enum: USER, AGENT, or SYSTEM
     content: str                    # Message text
     timestamp: datetime             # When created
     metadata: Dict[str, Any]        # Optional metadata
+
+# Note: When serialized to JSON, role enum becomes string ("user", "agent", "system")
+# via model_dump(mode='json') in the workflow's state query handler
 ```
 
 ### Message Roles
@@ -197,7 +201,8 @@ export const MESSAGE_ROLES = {
 - Workflows can handle multiple messages in sequence
 
 ### 2. **Polling Architecture**
-- Frontend polls every second for updates
+- Frontend polls `/workflow/{id}/status` every second
+- Returns `WorkflowState` with `conversation_history` field
 - Simple and reliable for demo purposes
 - Could be replaced with WebSockets/SSE in production
 
@@ -217,6 +222,12 @@ export const MESSAGE_ROLES = {
 - API errors displayed to user
 - Polling continues through transient failures
 - Workflow not found triggers new workflow creation
+
+### 6. **Message Serialization**
+- Backend uses Pydantic models with enum for MessageRole
+- Workflow query handler uses `model_dump(mode='json')` for proper enum serialization
+- Frontend receives role as string values ("user", "agent", "system")
+- Ensures compatibility between Python enums and JavaScript strings
 
 ## Configuration
 
@@ -255,11 +266,34 @@ The system uses sequential IDs to prevent duplicate messages when polling:
 2. **User Messages**: ID assigned when signal received (role: USER)
 3. **Agent Messages**: ID assigned after processing completes (role: AGENT)
 4. **Error Messages**: ID assigned when errors occur (role: AGENT)
-5. **Query Response**: Returns last 10 messages with their IDs
+5. **Query Response**: Returns last 10 messages with their IDs in `conversation_history`
+
+### API Response Structure
+```json
+{
+  "workflow_id": "durable-agent-xxx",
+  "status": "running",
+  "conversation_history": [
+    {
+      "id": 1,
+      "role": "user",
+      "content": "What's the weather?",
+      "timestamp": "2025-07-27T04:54:39.383677Z"
+    },
+    {
+      "id": 2,
+      "role": "agent",
+      "content": "The weather is...",
+      "timestamp": "2025-07-27T04:54:41.281905Z"
+    }
+  ],
+  "last_response": {...}
+}
+```
 
 ### Frontend (useWorkflow)
 1. **User Input**: User messages displayed immediately (role: USER)
-2. **Agent Polling**: Only polls for agent messages (role: AGENT)
+2. **Polling**: Polls `/status` endpoint for `conversation_history`
 3. **ID Tracking**: `lastSeenMessageIdRef` stores highest ID seen
 4. **Deduplication**: `if (msg.id > lastSeenMessageIdRef.current && msg.role === MESSAGE_ROLES.AGENT)`
 5. **Display**: Only new agent messages (higher IDs) are added
