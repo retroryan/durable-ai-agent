@@ -31,7 +31,7 @@ class AgricultureIntegrationTest:
         """Initialize test suite with optional detailed output mode."""
         self.detailed = detailed
     
-    async def wait_for_agent_response(self, client: DurableAgentAPIClient, workflow_id: str, timeout: int = 60) -> Tuple[bool, float]:
+    async def wait_for_agent_response(self, client: DurableAgentAPIClient, workflow_id: str, timeout: int = 60, expected_message_count: int = None) -> Tuple[bool, float]:
         """Wait for agent response with optional progress indicators."""
         start_time = time.time()
         max_attempts = timeout // 2
@@ -53,17 +53,33 @@ class AgricultureIntegrationTest:
             # Check conversation_history if present (same as frontend)
             conversation_history = status_data.get("conversation_history", [])
             if conversation_history:
-                # Look for agent messages
-                for msg in conversation_history:
-                    if msg.get("role") == "agent":
+                # Count agent messages
+                agent_message_count = sum(1 for msg in conversation_history if msg.get("role") == "agent")
+                
+                # If we're expecting a specific number of messages, wait for that count
+                if expected_message_count is not None:
+                    if agent_message_count >= expected_message_count:
                         elapsed = time.time() - start_time
                         if self.detailed:
-                            print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
+                            print(f"\n✅ Got agent response #{expected_message_count} after {elapsed:.2f} seconds")
                             print(f"   Status: {status_data.get('status')}")
                             print(f"   Messages in history: {len(conversation_history)}")
+                            print(f"   Agent messages: {agent_message_count}")
                         else:
                             print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
                         return True, elapsed
+                else:
+                    # Backward compatibility - any agent message
+                    for msg in conversation_history:
+                        if msg.get("role") == "agent":
+                            elapsed = time.time() - start_time
+                            if self.detailed:
+                                print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
+                                print(f"   Status: {status_data.get('status')}")
+                                print(f"   Messages in history: {len(conversation_history)}")
+                            else:
+                                print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                            return True, elapsed
             
             # Also check last_response for compatibility
             last_response = status_data.get("last_response", {})
@@ -196,7 +212,7 @@ class AgricultureIntegrationTest:
                     print(f"   - Message Count: {workflow_details.get('message_count', 0)}")
                     print(f"   - Interaction Count: {workflow_details.get('interaction_count', 0)}")
             
-            # Get trajectories from API
+            # Get trajectories from API - with query parameter for the specific interaction
             if self.detailed:
                 print("\n" + "─" * 60)
                 print("📍 Trajectory Analysis")
@@ -817,9 +833,8 @@ class AgricultureIntegrationTest:
         for i, (test_name, test_func) in enumerate(tests, 1):
             try:
                 start_time = time.time()
-                # Pass test number and total for detailed mode
+                # Each test creates its own workflow
                 if self.detailed:
-                    # Modify test functions to accept additional parameters
                     result = await test_func(client, i, len(tests))
                 else:
                     result = await test_func(client)
@@ -878,6 +893,59 @@ class AgricultureIntegrationTest:
         print("=" * 80)
         
         return failed
+    
+    async def display_chat_history(self, client: DurableAgentAPIClient, workflow_id: str) -> None:
+        """Display the full chat history from the workflow."""
+        print("\n" + "=" * 80)
+        print("💬 FULL CHAT HISTORY")
+        print("=" * 80)
+        
+        try:
+            # Get status which includes conversation history
+            status_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/status"
+            )
+            status_data = status_response.json()
+            
+            conversation_history = status_data.get("conversation_history", [])
+            
+            if not conversation_history:
+                print("No conversation history found.")
+                return
+                
+            print(f"Total messages: {len(conversation_history)}\n")
+            
+            for i, msg in enumerate(conversation_history):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                timestamp = msg.get("timestamp", "")
+                
+                # Format role display
+                if role == "user":
+                    role_display = "👤 USER"
+                    separator = "─" * 40
+                elif role == "agent":
+                    role_display = "🤖 AGENT"
+                    separator = "═" * 40
+                else:
+                    role_display = f"❓ {role.upper()}"
+                    separator = "─" * 40
+                
+                print(separator)
+                print(f"{role_display}")
+                if timestamp:
+                    print(f"⏰ {timestamp}")
+                print(separator)
+                print(content)
+                
+                # Add extra spacing between messages
+                if i < len(conversation_history) - 1:
+                    print()
+                    
+            print("=" * 80)
+            
+        except Exception as e:
+            print(f"❌ Error fetching chat history: {e}")
 
 
 async def main():

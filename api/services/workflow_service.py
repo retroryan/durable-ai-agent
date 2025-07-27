@@ -88,7 +88,7 @@ class WorkflowService:
                 AgenticAIWorkflow.run,
                 id=workflow_id,
                 task_queue=self.task_queue,
-                workflow_execution_timeout=timedelta(minutes=30),
+                execution_timeout=timedelta(minutes=30),
             )
             # Send initial message via signal
             await handle.signal("prompt", message)
