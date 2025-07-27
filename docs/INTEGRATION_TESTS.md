@@ -19,6 +19,7 @@ All tests are **direct Python programs (not pytest)** to maintain simplicity and
 integration_tests/
 ├── test_mcp_connections.py  # Tests STDIO and HTTP connections to MCP servers
 ├── test_api_e2e.py         # Tests complete workflows through the API
+├── test_agriculture.py     # Tests agricultural tools with detailed React loop visibility
 └── run_integration_tests.py # Test runner for all tests
 ```
 
@@ -128,6 +129,35 @@ Tests complete workflows through the API:
 - Checks response quality
 - Tests multiple tool scenarios
 
+### test_agriculture.py
+
+Comprehensive integration tests for agricultural tools with detailed React loop visibility:
+- Tests all weather and agricultural tools (forecast, historical, agricultural conditions)
+- Provides standard or detailed output modes
+- Shows AI agent's reasoning process (Thought → Action → Observation)
+- Supports running specific number of tests
+
+Run with:
+```bash
+# Run all tests
+poetry run python integration_tests/test_agriculture.py
+
+# Run first 2 tests
+poetry run python integration_tests/test_agriculture.py 2
+
+# Run with detailed React loop output
+poetry run python integration_tests/test_agriculture.py -d
+
+# Run 3 tests with detailed output
+poetry run python integration_tests/test_agriculture.py -d 3
+```
+
+Detailed mode shows:
+- Complete React loop iterations
+- Tool selection reasoning
+- Execution timing
+- Full trajectory analysis
+
 ## Troubleshooting
 
 ### MCP Connection Tests Failing
@@ -181,3 +211,4 @@ if __name__ == "__main__":
 - Tests are designed to be run independently, not as part of a test suite
 - Each test provides clear console output for easy debugging
 - No complex test frameworks or fixtures - just simple Python scripts
+- The `test_agriculture.py` test requires docker-compose to be running as it tests the full workflow

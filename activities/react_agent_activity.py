@@ -111,6 +111,25 @@ class ReactAgentActivity:
             f"[ReactAgentActivity] _execute_react_iteration called with query: '{prompt}', "
             f"iteration: {current_iteration}, trajectories count: {len(trajectories)}"
         )
+        
+        # Log detailed trajectory information before passing to agent
+        activity.logger.info("[ReactAgentActivity] === TRAJECTORY DETAILS BEFORE REACT AGENT ===")
+        for i, traj in enumerate(trajectories):
+            activity.logger.info(
+                f"[ReactAgentActivity] Trajectory[{i}]: "
+                f"iteration={traj.iteration}, "
+                f"tool_name={traj.tool_name}, "
+                f"tool_args={traj.tool_args}, "
+                f"has_observation={traj.observation is not None}, "
+                f"observation_length={len(str(traj.observation)) if traj.observation else 0}"
+            )
+            if traj.observation:
+                # Log first 200 chars of observation
+                activity.logger.info(
+                    f"[ReactAgentActivity] Trajectory[{i}] observation preview: "
+                    f"{str(traj.observation)[:200]}..."
+                )
+        activity.logger.info("[ReactAgentActivity] === END TRAJECTORY DETAILS ===")
 
         try:
             # Add logging before the actual call

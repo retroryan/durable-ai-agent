@@ -215,6 +215,33 @@ poetry run python integration_tests/test_api_e2e.py
 docker-compose down
 ```
 
+#### Agricultural Tools Tests
+
+Test agricultural tools with optional detailed React loop visibility:
+
+```bash
+# Ensure services are running
+docker-compose up -d
+
+# Run all agricultural tests
+poetry run python integration_tests/test_agriculture.py
+
+# Run first 3 tests only
+poetry run python integration_tests/test_agriculture.py 3
+
+# Run with detailed React loop output
+poetry run python integration_tests/test_agriculture.py -d
+
+# Run 2 tests with detailed output
+poetry run python integration_tests/test_agriculture.py -d 2
+```
+
+The detailed mode shows:
+- Complete React agent reasoning (Thought → Action → Observation)
+- Tool selection and execution details
+- Trajectory analysis and timing
+- Full synthesis process
+
 #### Running All Integration Tests
 
 ```bash

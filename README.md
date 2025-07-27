@@ -24,8 +24,6 @@ The durable-ai-agent represents a fundamental evolution in building reliable AI 
 ### Prerequisites
 
 - Docker and Docker Compose
-- Python 3.10+ with Poetry
-- Node.js 20+ (for frontend)
 
 ### Installation
 
@@ -45,9 +43,11 @@ open http://localhost:3000
 ```
 
 **Example queries:**
-- `"weather: Are conditions good for planting corn in Ames, Iowa?"`
-- `"historical: Show me last week's temperatures in Chicago"`
-- `"agriculture: What's the soil moisture in Nebraska?"`
+- `"What are the soil moisture levels at my tree farm in Olympia, Washington?"`
+- `"Compare current weather and agricultural conditions between Napa Valley and Sonoma County for grape growing. Which location has better conditions right now?"`
+- `"What's the weather like in New York and should I bring an umbrella?"`
+- `"Check current conditions in Des Moines, Iowa for corn, soybeans, and wheat - which crop has the best growing conditions right now?"`
+- `"Compare weather patterns in Napa Valley for the first week of February, March, and April 2024. Which month had the best conditions for vineyard work?"`
 
 **Service URLs:**
 - API Server: http://localhost:8000

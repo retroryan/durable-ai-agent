@@ -26,7 +26,9 @@ class AgenticAIWorkflow:
     """Signal-driven workflow that processes prompts through a React agent loop."""
 
     def __init__(self):
-        """Initialize workflow state."""
+        """Initialize workflow state.
+        """
+        # Trajectory state - automatically persisted by Temporal
         self.trajectories: List[Trajectory] = []
         self.current_iteration = 0
         self.execution_time = 0.0
@@ -89,27 +91,27 @@ class AgenticAIWorkflow:
 
             workflow.logger.info(f"[AgenticAIWorkflow] Processing prompt: {next_prompt}")
             
-            # Run the React agent loop (following demo pattern)
-            trajectories, execution_time = await self._run_react_loop(
+            # Run the React agent loop
+            # NOTE: _run_react_loop modifies self.trajectories directly (instance variable)
+            execution_time = await self._run_react_loop(
                 prompt=next_prompt,
-                user_name=self.user_name,
-                max_iterations=5
+                user_name=self.user_name
             )
             
-            # Update instance state
-            self.trajectories = trajectories
+            # Only update the execution time (trajectories already updated internally)
             self.execution_time = execution_time
 
-            # Extract final answer
+            # Extract final answer using the trajectories from instance variable
+            # No need to pass trajectories as a parameter since we're using self.trajectories
             self.workflow_status = WorkflowStatus.EXTRACTING_ANSWER
             final_answer = await self._extract_final_answer(
-                trajectories=trajectories,
+                trajectories=self.trajectories,
                 prompt=next_prompt,
                 user_name=self.user_name
             )
             
             # Process the result
-            response_message = self._format_response(final_answer, trajectories)
+            response_message = self._format_response(final_answer, self.trajectories)
             
             # Save to conversation history
             self.message_id_counter += 1
@@ -122,7 +124,7 @@ class AgenticAIWorkflow:
             self.conversation_history.append(agent_message)
             
             # Extract tools used from trajectories for logging
-            tools_used = Trajectory.get_tools_used_from_trajectories(trajectories)
+            tools_used = Trajectory.get_tools_used_from_trajectories(self.trajectories)
 
             # Log summary
             workflow.logger.info(
@@ -152,39 +154,53 @@ class AgenticAIWorkflow:
     async def _run_react_loop(
         self,
         prompt: str,
-        user_name: str,
-        max_iterations: int = 5
-    ) -> Tuple[List[Trajectory], float]:
+        user_name: str
+    ) -> float:
         """
         Run the React agent loop until completion or max iterations.
+        
+        This method directly modifies self.trajectories (instance variable)
+        rather than using local variables. This ensures Temporal can properly persist
+        and recover state during workflow execution and replays.
 
         Args:
             prompt: The user's query
             user_name: The name of the user
-            max_iterations: Maximum number of iterations
 
         Returns:
-            Tuple of (list of trajectories, execution time)
+            float: The execution time in seconds (trajectories are updated via instance variable)
         """
-        trajectories: List[Trajectory] = []
+        # Reset trajectories for this new prompt
+        self.trajectories = []
         recat_loop_iterations = 1
         start_time = workflow.now()
+        MAX_ITERATIONS = 10  # Default max iterations - todo make configurable
 
         workflow.logger.info(
-            f"[AgenticAIWorkflow] Starting React agent loop, max iterations: {max_iterations}"
+            f"[AgenticAIWorkflow] Starting React agent loop, max iterations: {MAX_ITERATIONS}"
         )
 
         # Loop until we get "finish" or hit max iterations
-        while recat_loop_iterations <= max_iterations:
+        while recat_loop_iterations <= MAX_ITERATIONS:
             workflow.logger.info(
-                f"[AgenticAIWorkflow] Iteration {recat_loop_iterations}/{max_iterations}"
+                f"[AgenticAIWorkflow] Iteration {recat_loop_iterations}/{MAX_ITERATIONS}"
             )
+            
+            # Log current trajectories state
+            workflow.logger.info(
+                f"[AgenticAIWorkflow] Current trajectories count before ReactAgent: {len(self.trajectories)}"
+            )
+            for i, traj in enumerate(self.trajectories):
+                workflow.logger.info(
+                    f"[AgenticAIWorkflow] Pre-React Trajectory[{i}]: "
+                    f"tool={traj.tool_name}, has_observation={traj.observation is not None}"
+                )
 
             # Call ReactAgent activity
             agent_result = await self._call_react_agent(
                 prompt=prompt,
                 user_name=user_name,
-                trajectories=trajectories,
+                trajectories=self.trajectories,
                 current_iteration=recat_loop_iterations
             )
 
@@ -195,14 +211,10 @@ class AgenticAIWorkflow:
                 self.workflow_status = WorkflowStatus.FAILED
                 break
 
-            # Update trajectories from agent result
-            updated_trajectories = agent_result.trajectories
-            
-            # Update instance variable for state persistence
-            self.trajectories = updated_trajectories
+            self.trajectories = agent_result.trajectories
 
             # Get the latest trajectory (just added by ReactAgent)
-            latest_trajectory = updated_trajectories[-1] if updated_trajectories else None
+            latest_trajectory = self.trajectories[-1] if self.trajectories else None
             
             if not latest_trajectory:
                 workflow.logger.error("[AgenticAIWorkflow] No trajectory returned from ReactAgent")
@@ -219,25 +231,44 @@ class AgenticAIWorkflow:
 
             # Execute the tool
             tool_result = await self._execute_tool(
-                trajectories=updated_trajectories,
+                trajectories=self.trajectories,
                 current_iteration=recat_loop_iterations
             )
 
-            # Update trajectories with the ones returned by tool execution
-            # The ToolExecutionActivity already added the observation
+            # Update trajectories with tool execution results
+            # The ToolExecutionActivity adds the observation to the last trajectory
+            # and returns the complete updated list
             if tool_result.trajectories:
-                self.trajectories = updated_trajectories
-                updated_trajectories = tool_result.trajectories
+                workflow.logger.info(
+                    f"[AgenticAIWorkflow] Tool execution updated trajectories from "
+                    f"{len(self.trajectories)} to {len(tool_result.trajectories)}"
+                )
+                # Update the instance variable so the next iteration sees the observation
+                self.trajectories = tool_result.trajectories
+            else:
+                workflow.logger.warning(
+                    "[AgenticAIWorkflow] Tool execution did not return trajectories!"
+                )
+            
+            # Log trajectory state after tool execution
+            workflow.logger.info(
+                f"[AgenticAIWorkflow] After tool execution, trajectories count: {len(self.trajectories)}"
+            )
+            if self.trajectories and self.trajectories[-1].observation:
+                workflow.logger.info(
+                    f"[AgenticAIWorkflow] Latest observation added: "
+                    f"{str(self.trajectories[-1].observation)[:100]}..."
+                )
 
             recat_loop_iterations += 1
 
-        if recat_loop_iterations > max_iterations:
+        if recat_loop_iterations > MAX_ITERATIONS:
             workflow.logger.warning(
-                f"[AgenticAIWorkflow] Reached maximum iterations ({max_iterations})"
+                f"[AgenticAIWorkflow] Reached maximum iterations ({MAX_ITERATIONS})"
             )
 
         execution_time = (workflow.now() - start_time).total_seconds()
-        return updated_trajectories, execution_time
+        return execution_time
 
     async def _call_react_agent(
         self,
@@ -447,12 +478,7 @@ class AgenticAIWorkflow:
         # Use mode='json' to ensure enums are serialized as their values
         serialized_history = [msg.model_dump(mode='json') for msg in recent_history]
         
-        # Log what we're returning for debugging
-        workflow.logger.info(f"[AgenticAIWorkflow.state] Returning {len(serialized_history)} messages")
-        if serialized_history:
-            workflow.logger.info(f"[AgenticAIWorkflow.state] First message: id={serialized_history[0].get('id')}, role={serialized_history[0].get('role')}")
-            workflow.logger.info(f"[AgenticAIWorkflow.state] Last message: id={serialized_history[-1].get('id')}, role={serialized_history[-1].get('role')}")
-        
+
         result = {
             "last_response": latest_msg.content if latest_msg else "Processing your request...",
             "status": self.workflow_status,

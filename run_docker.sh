@@ -9,6 +9,7 @@ NC='\033[0m' # No Color
 # Parse command line arguments
 REFRESH_FRONT=false
 REFRESH_WORKER=false
+REFRESH_FRONTEND=false
 for arg in "$@"; do
     case $arg in
         --front)
@@ -17,6 +18,10 @@ for arg in "$@"; do
             ;;
         --worker)
             REFRESH_WORKER=true
+            shift
+            ;;
+        --frontend)
+            REFRESH_FRONTEND=true
             shift
             ;;
     esac
@@ -54,6 +59,29 @@ if [ "$REFRESH_WORKER" = true ]; then
     exit 0
 fi
 
+if [ "$REFRESH_FRONTEND" = true ]; then
+    echo -e "${BLUE}🔄 Refreshing frontend...${NC}"
+    echo -e "${YELLOW}⚠️  Forcing frontend rebuild to clear cached configurations...${NC}"
+    docker-compose build --no-cache frontend
+    docker-compose up -d --no-deps frontend
+    echo -e "${GREEN}✅ Frontend refreshed${NC}"
+    
+    # Give it a moment to start
+    sleep 2
+    
+    # Display success message
+    echo -e "${GREEN}✅ Frontend is running!${NC}"
+    echo ""
+    echo "📍 Available endpoints:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🎨 Frontend:          http://localhost:3000"
+    echo "  📡 API Server:        http://localhost:8000"
+    echo "  📚 API Documentation: http://localhost:8000/docs"
+    echo "  🔄 Temporal UI:       http://localhost:8080"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    exit 0
+fi
+
 # Ensure logs directory exists
 mkdir -p logs
 
@@ -66,11 +94,13 @@ else
 fi
 
 echo -e "${BLUE}🔨 Rebuilding Docker containers...${NC}"
-docker-compose build
+echo -e "${YELLOW}⚠️  Forcing frontend rebuild to clear cached configurations...${NC}"
+docker-compose build --no-cache frontend
+docker-compose build api worker mcp-server temporal temporal-ui temporal-admin-tools postgresql
 
 # Always run all services including API server and frontend
 echo -e "\n${BLUE}🚀 Starting all services with docker-compose...${NC}"
-docker-compose --profile api_server up -d
+docker-compose up -d
 
 # Wait for services to be ready
 echo -e "\n${YELLOW}⏳ Waiting for services to start...${NC}"
