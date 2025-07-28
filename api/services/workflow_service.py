@@ -103,9 +103,6 @@ class WorkflowService:
                 raise
         
         # Query current state instead of waiting for result
-        logger.info("Waiting for workflow to initialize...")
-        await asyncio.sleep(2.0)  # Increased delay to allow workflow initialization
-        logger.info("Done waiting, about to query workflow")
         
         # Get conversation state using the new query method
         logger.info("About to query get_conversation_state")

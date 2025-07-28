@@ -169,12 +169,10 @@ async def chat(input_data: WorkflowInput):
         )
         return state
     except Exception as e:
-        import traceback
         logger.error(
             f"Error processing message for workflow_id: {input_data.workflow_id}, error: {e}",
             exc_info=True
         )
-        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

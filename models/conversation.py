@@ -1,7 +1,7 @@
 """Conversation models for managing chat history."""
 
 from pydantic import BaseModel, Field, computed_field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import uuid
 
@@ -9,7 +9,7 @@ import uuid
 class ConversationMessage(BaseModel):
     """Complete conversation turn including request and response."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # User request
     user_message: str

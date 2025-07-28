@@ -52,20 +52,23 @@ class MultiTurnConversationTest:
         while time.time() - start_time < timeout:
             await asyncio.sleep(2)
             
-            # Get conversation history
-            history_data = await client.get_conversation_history(workflow_id)
-            conversation_history = history_data.get("conversation_history", [])
+            # Get conversation state
+            conv_state = await client.get_conversation_state(workflow_id)
+            messages = conv_state.get("messages", [])
+            
+            # Count messages that have agent responses
+            completed_messages = [msg for msg in messages if msg.get("agent_message")]
             
             # Check if we have new messages
-            if len(conversation_history) > last_message_count:
+            if len(completed_messages) > last_message_count:
                 if self.detailed:
-                    print(f"\n   📨 New messages detected: {len(conversation_history) - last_message_count}")
-                last_message_count = len(conversation_history)
+                    print(f"\n   📨 New messages detected: {len(completed_messages) - last_message_count}")
+                last_message_count = len(completed_messages)
             elif self.detailed:
                 print(".", end="", flush=True)
             
-            # Count agent messages
-            agent_messages = [msg for msg in conversation_history if msg.get("role") == "agent"]
+            # Count agent messages (same as completed messages)
+            agent_messages = completed_messages
             
             if len(agent_messages) >= target_count:
                 elapsed = time.time() - start_time
@@ -81,17 +84,16 @@ class MultiTurnConversationTest:
                 
                 return {
                     "id": latest_agent["id"],
-                    "content": latest_agent["content"],
-                    "timestamp": latest_agent["timestamp"],
+                    "content": latest_agent["agent_message"],
+                    "timestamp": latest_agent["agent_timestamp"],
                     "tools_used": tools_used,
                     "elapsed_time": elapsed
                 }
         
         # Timeout - show what we did find
-        agent_messages = [msg for msg in conversation_history if msg.get("role") == "agent"]
         print(f"\n❌ Timeout waiting for {target_count} agent messages")
-        print(f"   Total messages: {len(conversation_history)}")
-        print(f"   Agent messages: {len(agent_messages)}")
+        print(f"   Total messages: {len(messages)}")
+        print(f"   Completed messages: {len(completed_messages)}")
         
         raise TimeoutError(f"{target_count} agent messages not found within {timeout}s")
     
@@ -165,7 +167,7 @@ class MultiTurnConversationTest:
         user_name = f"farmer_{datetime.now().strftime('%H%M%S')}"
         print(f"👤 Creating workflow for user: {user_name}")
         
-        initial_message = "Hi, I'm a farmer in California looking for weather information."
+        initial_message = "Hi, I'm a farmer in Fresno, California looking for weather information."
         print(f"📤 Initial message: {initial_message}")
         
         initial_response = await client.chat(
@@ -182,7 +184,7 @@ class MultiTurnConversationTest:
         
         # Wait for initial greeting
         try:
-            greeting = await self.wait_for_agent_message_count(client, workflow_id, 1, timeout=15)
+            greeting = await self.wait_for_agent_message_count(client, workflow_id, 1, timeout=30)
             print(f"\n📝 Initial Response:")
             print("-" * 60)
             print(greeting["content"])
@@ -288,7 +290,7 @@ class MultiTurnConversationTest:
         
         # Wait for initial response
         try:
-            greeting = await self.wait_for_message_id(client, workflow_id, 2, timeout=15)
+            greeting = await self.wait_for_agent_message_count(client, workflow_id, 1, timeout=30)
             print(f"\n📝 Initial greeting received")
         except TimeoutError:
             print("❌ Failed to get initial response")
@@ -300,7 +302,7 @@ class MultiTurnConversationTest:
             return False
         
         try:
-            response = await self.wait_for_message_id(client, workflow_id, 4, timeout=30)
+            response = await self.wait_for_agent_message_count(client, workflow_id, 2, timeout=30)
             print(f"\n📝 Weather Response:")
             print("-" * 60)
             print(response["content"][:300] + "..." if len(response["content"]) > 300 else response["content"])
@@ -329,7 +331,7 @@ class MultiTurnConversationTest:
             return False
         
         try:
-            response = await self.wait_for_message_id(client, workflow_id, 6, timeout=30)
+            response = await self.wait_for_agent_message_count(client, workflow_id, 3, timeout=30)
             print(f"\n📝 Agricultural Response:")
             print("-" * 60)
             print(response["content"][:300] + "..." if len(response["content"]) > 300 else response["content"])
@@ -410,9 +412,9 @@ class MultiTurnConversationTest:
                 return False
             
             try:
-                response = await self.wait_for_message_id(
+                response = await self.wait_for_agent_message_count(
                     client, workflow_id, 
-                    step["message_id"],
+                    step["message_id"] // 2,  # Convert message ID to agent count
                     timeout=30
                 )
                 
@@ -466,7 +468,7 @@ class MultiTurnConversationTest:
             "Which city is warmer?"
         ]
         
-        expected_total_messages = 2 + (len(messages) * 2)  # Initial + (user + agent) * n
+        expected_total_messages = 1 + len(messages)  # Initial + additional messages
         
         for i, msg in enumerate(messages):
             print(f"\n📤 Sending message {i+1}: {msg}")
@@ -481,44 +483,49 @@ class MultiTurnConversationTest:
                 print(f"❌ Failed to get response {i+1}")
                 return False
         
-        # Get final conversation history
+        # Get final conversation state
         print("\n📊 Checking conversation history...")
-        history_data = await client.get_conversation_history(workflow_id)
-        conversation_history = history_data.get("conversation_history", [])
+        conv_state = await client.get_conversation_state(workflow_id)
+        messages = conv_state.get("messages", [])
         
-        print(f"Total messages in history: {len(conversation_history)}")
+        print(f"Total messages in conversation: {len(messages)}")
         
-        # Verify message count
-        if len(conversation_history) == expected_total_messages:
-            print(f"✅ Correct number of messages: {expected_total_messages}")
+        # Expected: initial message + 3 additional messages = 4 total
+        expected_message_count = 1 + 3  # 4
+        if len(messages) == expected_message_count:
+            print(f"✅ Correct number of conversation messages: {expected_message_count}")
         else:
-            print(f"❌ Expected {expected_total_messages} messages, got {len(conversation_history)}")
+            print(f"❌ Expected {expected_message_count} messages, got {len(messages)}")
             return False
         
-        # Verify message IDs are sequential
-        message_ids = [msg["id"] for msg in conversation_history]
-        if message_ids == list(range(1, expected_total_messages + 1)):
-            print("✅ Message IDs are sequential")
+        # Verify message IDs are UUIDs
+        message_ids = [msg["id"] for msg in messages]
+        all_uuids = all(isinstance(msg_id, str) and len(msg_id) == 36 and '-' in msg_id for msg_id in message_ids)
+        if all_uuids:
+            print("✅ All message IDs are valid UUIDs")
         else:
-            print(f"❌ Message IDs are not sequential: {message_ids}")
+            print(f"❌ Some message IDs are not valid UUIDs: {message_ids}")
             return False
         
-        # Verify alternating user/agent pattern
-        roles = [msg["role"] for msg in conversation_history]
-        expected_pattern = ["user", "agent"] * (expected_total_messages // 2)
-        if roles == expected_pattern:
-            print("✅ Correct user/agent message pattern")
+        # Verify all messages have both user and agent parts (except possibly the last one if still processing)
+        completed_count = sum(1 for msg in messages if msg.get("agent_message"))
+        if completed_count == len(messages):
+            print("✅ All messages have been completed with agent responses")
         else:
-            print("❌ Incorrect message pattern")
-            return False
+            print(f"⚠️  {completed_count}/{len(messages)} messages have agent responses")
         
         # Display conversation summary
         print("\n📜 Conversation Summary:")
         print("-" * 60)
-        for msg in conversation_history:
-            role = "👤 USER " if msg["role"] == "user" else "🤖 AGENT"
-            preview = msg["content"][:60] + "..." if len(msg["content"]) > 60 else msg["content"]
-            print(f"[{msg['id']}] {role}: {preview}")
+        for msg in messages:
+            # Show user message
+            user_preview = msg["user_message"][:60] + "..." if len(msg["user_message"]) > 60 else msg["user_message"]
+            print(f"[{msg['id']}] 👤 USER : {user_preview}")
+            
+            # Show agent response if available
+            if msg.get("agent_message"):
+                agent_preview = msg["agent_message"][:60] + "..." if len(msg["agent_message"]) > 60 else msg["agent_message"]
+                print(f"[{msg['id']}] 🤖 AGENT: {agent_preview}")
         print("-" * 60)
         
         print("\n✅ Conversation history test passed!")

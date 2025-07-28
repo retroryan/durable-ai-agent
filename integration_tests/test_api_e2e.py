@@ -25,12 +25,12 @@ class MCPWeatherFlowTest:
         for attempt in range(max_attempts):
             await asyncio.sleep(2)  # Poll every 2 seconds
             
-            # Get conversation history
-            history_data = await client.get_conversation_history(workflow_id)
+            # Get conversation state
+            conv_state = await client.get_conversation_state(workflow_id)
             
             # Check if we have an agent response
-            messages = history_data.get("conversation_history", [])
-            if len(messages) >= 2 and messages[-1].get("role") == "agent":
+            messages = conv_state.get("messages", [])
+            if messages and messages[-1].get("agent_message"):
                 print(f"Got agent response after {(attempt + 1) * 2} seconds")
                 return True
         
@@ -83,10 +83,10 @@ class MCPWeatherFlowTest:
             else:
                 trajectories = []
             
-            # Get conversation history for final message
-            history_data = await client.get_conversation_history(workflow_id)
-            messages = history_data.get("conversation_history", [])
-            message = messages[-1].get("content", "") if messages else ""
+            # Get conversation state for final message
+            conv_state = await client.get_conversation_state(workflow_id)
+            messages = conv_state.get("messages", [])
+            message = messages[-1].get("agent_message", "") if messages else ""
             
             # Convert trajectory objects to steps for display
             steps = []

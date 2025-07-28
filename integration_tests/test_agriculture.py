@@ -61,10 +61,10 @@ class AgricultureIntegrationTest:
                 # For detailed output, get full conversation to count agent messages
                 if self.detailed or expected_message_count is not None:
                     try:
-                        # Get conversation history to count messages
-                        history_data = await client.get_conversation_history(workflow_id)
-                        conversation_history = history_data.get("conversation_history", [])
-                        agent_message_count = sum(1 for msg in conversation_history if msg.get("role") == "agent")
+                        # Get conversation state to count messages
+                        conv_state = await client.get_conversation_state(workflow_id)
+                        messages = conv_state.get("messages", [])
+                        agent_message_count = sum(1 for msg in messages if msg.get("agent_message"))
                         
                         if expected_message_count is not None:
                             if agent_message_count >= expected_message_count:
@@ -272,12 +272,12 @@ class AgricultureIntegrationTest:
             # If still no message, fetch from conversation endpoint
             if not final_message:
                 try:
-                    history_data = await client.get_conversation_history(workflow_id)
-                    conversation_history = history_data.get("conversation_history", [])
+                    conv_state = await client.get_conversation_state(workflow_id)
+                    messages = conv_state.get("messages", [])
                     # Find last agent message
-                    for msg in reversed(conversation_history):
-                        if msg.get("role") == "agent":
-                            final_message = msg.get("content", "")
+                    for msg in reversed(messages):
+                        if msg.get("agent_message"):
+                            final_message = msg.get("agent_message", "")
                             break
                 except:
                     pass
@@ -921,43 +921,34 @@ class AgricultureIntegrationTest:
         print("=" * 80)
         
         try:
-            # Get conversation history using the new helper method
-            history_data = await client.get_conversation_history(workflow_id)
-            conversation_history = history_data.get("conversation_history", [])
+            # Get conversation state using the new API
+            conv_state = await client.get_conversation_state(workflow_id)
+            messages = conv_state.get("messages", [])
             
-            if not conversation_history:
-                print("No conversation history found.")
+            if not messages:
+                print("No conversation messages found.")
                 return
                 
-            print(f"Total messages: {len(conversation_history)}\n")
+            print(f"Total messages: {len(messages)}\n")
             
-            for i, msg in enumerate(conversation_history):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
-                timestamp = msg.get("timestamp", "")
+            for i, msg in enumerate(messages):
+                # Show user message
+                user_content = msg.get("user_message", "")
+                user_timestamp = msg.get("user_timestamp", "")
+                print(f"[{i+1}] USER @ {user_timestamp}:")
+                print(f"    {user_content}")
+                print()
                 
-                # Format role display
-                if role == "user":
-                    role_display = "👤 USER"
-                    separator = "─" * 40
-                elif role == "agent":
-                    role_display = "🤖 AGENT"
-                    separator = "═" * 40
-                else:
-                    role_display = f"❓ {role.upper()}"
-                    separator = "─" * 40
-                
-                print(separator)
-                print(f"{role_display}")
-                if timestamp:
-                    print(f"⏰ {timestamp}")
-                print(separator)
-                print(content)
-                
-                # Add extra spacing between messages
-                if i < len(conversation_history) - 1:
+                # Show agent response if available
+                if msg.get("agent_message"):
+                    agent_content = msg.get("agent_message", "")
+                    agent_timestamp = msg.get("agent_timestamp", "")
+                    print(f"[{i+1}] AGENT @ {agent_timestamp}:")
+                    print(f"    {agent_content}")
                     print()
-                    
+                    print("-" * 80)
+                    print()
+                
             print("=" * 80)
             
         except Exception as e:
