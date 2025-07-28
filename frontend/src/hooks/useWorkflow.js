@@ -79,7 +79,7 @@ export function useWorkflow() {
           const newMessages = [];
           
           for (const msg of convResponse.conversation_update.new_messages) {
-            // Add agent messages only (user messages already shown)
+            // Add agent messages that are complete and not already seen (user messages are already shown)
             if (msg.agent_message && msg.is_complete && !seenMessageIds.current.has(msg.id)) {
               newMessages.push({
                 id: msg.id,

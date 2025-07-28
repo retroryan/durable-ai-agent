@@ -487,7 +487,7 @@ class AgenticAIWorkflow:
             elif msg.id == last_seen_message_id:
                 found_last_seen = True
                 # Check if this message was updated since last seen
-                if not msg.is_complete and msg.agent_message:
+                if not msg.is_complete:
                     updated_messages.append(msg)
         
         return ConversationUpdate(

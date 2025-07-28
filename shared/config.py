@@ -5,6 +5,7 @@ from typing import Union
 from dotenv import load_dotenv
 from temporalio.client import Client
 from temporalio.service import TLSConfig
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 load_dotenv(override=True)
 
@@ -77,6 +78,7 @@ async def get_temporal_client() -> Client:
             namespace=TEMPORAL_NAMESPACE,
             api_key=TEMPORAL_API_KEY,
             tls=True,  # Always use TLS with API key
+            data_converter=pydantic_data_converter,
         )
 
     # Use mTLS or local connection
@@ -84,4 +86,5 @@ async def get_temporal_client() -> Client:
         TEMPORAL_ADDRESS,
         namespace=TEMPORAL_NAMESPACE,
         tls=tls_config,
+        data_converter=pydantic_data_converter,
     )

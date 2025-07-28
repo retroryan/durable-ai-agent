@@ -89,7 +89,6 @@ class WorkflowService:
             try:
                 handle = await self.client.start_workflow(
                     AgenticAIWorkflow.run,
-                    args=[None],  # Pass None for optional WorkflowSummary
                     id=workflow_id,
                     task_queue=self.task_queue,
                     execution_timeout=timedelta(minutes=30),
@@ -110,16 +109,7 @@ class WorkflowService:
             conv_state = await handle.query("get_conversation_state")
             logger.info(f"Query returned: type={type(conv_state)}, data={conv_state}")
             
-            # Handle case where it might be a dict
-            if isinstance(conv_state, dict):
-                logger.info(f"Converting dict to ConversationState: {conv_state}")
-                # Convert messages from dicts to ConversationMessage objects
-                if 'messages' in conv_state and isinstance(conv_state['messages'], list):
-                    conv_state['messages'] = [
-                        ConversationMessage(**msg) if isinstance(msg, dict) else msg
-                        for msg in conv_state['messages']
-                    ]
-                conv_state = ConversationState(**conv_state)
+            # Pydantic data converter handles all serialization
         except Exception as e:
             logger.error(f"Error querying conversation state: {e}", exc_info=True)
             # Create default state
@@ -128,32 +118,18 @@ class WorkflowService:
         # Get last response message
         last_message = "Processing your request..."
         
-        # One more safety check before accessing messages
-        if isinstance(conv_state, dict):
-            logger.warning("conv_state is still a dict, converting...")
-            try:
-                conv_state = ConversationState(**conv_state)
-            except Exception as e:
-                logger.error(f"Failed to convert dict to ConversationState: {e}")
-                conv_state = ConversationState(messages=[], is_processing=True, current_message_id=None)
+        # Pydantic data converter ensures proper type conversion
         
         try:
             if hasattr(conv_state, 'messages') and conv_state.messages:
                 for msg_data in reversed(conv_state.messages):
-                    # Handle case where message might be a dict
-                    if isinstance(msg_data, dict):
-                        msg = ConversationMessage(**msg_data)
-                    else:
-                        msg = msg_data
+                    msg = msg_data
                     if msg.is_complete and msg.agent_message:
                         last_message = msg.agent_message
                         break
         except AttributeError as e:
             logger.error(f"AttributeError processing messages: {e}, conv_state type: {type(conv_state)}, conv_state: {conv_state}", exc_info=True)
-            # Extra safety check
-            if isinstance(conv_state, dict):
-                logger.error("conv_state is a dict, attempting conversion")
-                conv_state = ConversationState(**conv_state)
+            # Type is guaranteed by Pydantic data converter
         except Exception as e:
             logger.error(f"Other error processing messages: {e}, conv_state type: {type(conv_state)}", exc_info=True)
         
@@ -197,16 +173,7 @@ class WorkflowService:
                     conv_state = await handle.query("get_conversation_state")
                     logger.info(f"Queried conversation state for {workflow_id}: {conv_state}")
                     
-                    # Handle dict conversion if needed
-                    if isinstance(conv_state, dict):
-                        logger.info("Converting dict to ConversationState")
-                        # Convert messages from dicts to ConversationMessage objects
-                        if 'messages' in conv_state and isinstance(conv_state['messages'], list):
-                            conv_state['messages'] = [
-                                ConversationMessage(**msg) if isinstance(msg, dict) else msg
-                                for msg in conv_state['messages']
-                            ]
-                        conv_state = ConversationState(**conv_state)
+                    # Pydantic data converter handles all serialization
                     
                     # Extract summary data from conversation state
                     message_count = len(conv_state.messages)
@@ -432,21 +399,6 @@ class WorkflowService:
             
             # Query for updates
             updates = await handle.query("get_conversation_updates", last_seen_message_id)
-            
-            # Handle dict conversion if needed
-            if isinstance(updates, dict):
-                # Convert message dicts to ConversationMessage objects
-                if 'new_messages' in updates and isinstance(updates['new_messages'], list):
-                    updates['new_messages'] = [
-                        ConversationMessage(**msg) if isinstance(msg, dict) else msg
-                        for msg in updates['new_messages']
-                    ]
-                if 'updated_messages' in updates and isinstance(updates['updated_messages'], list):
-                    updates['updated_messages'] = [
-                        ConversationMessage(**msg) if isinstance(msg, dict) else msg
-                        for msg in updates['updated_messages']
-                    ]
-                return ConversationUpdate(**updates)
             
             return updates
             

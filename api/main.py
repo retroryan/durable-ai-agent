@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from api.services.workflow_service import WorkflowService
 from models.trajectory import Trajectory
@@ -61,10 +62,11 @@ async def lifespan(app: FastAPI):
     config = Settings()
     logger.info(f"Connecting to Temporal at {config.temporal_host}")
 
-    # Create Temporal client
+    # Create Temporal client with Pydantic data converter
     client = await Client.connect(
         config.temporal_host,
         namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     # Initialize workflow service

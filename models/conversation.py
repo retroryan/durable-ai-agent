@@ -9,7 +9,6 @@ import uuid
 class ConversationMessage(BaseModel):
     """Complete conversation turn including request and response."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # User request
     user_message: str
