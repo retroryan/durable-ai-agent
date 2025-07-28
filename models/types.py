@@ -9,35 +9,7 @@ from models.tool_definitions import MCPServerDefinition
 from models.trajectory import Trajectory
 
 
-class MessageRole(str, Enum):
-    """Fixed message roles with no magic strings."""
-    USER = "user"
-    AGENT = "agent"
-    SYSTEM = "system"
-
-
-class Message(BaseModel):
-    """Message in a conversation with sequential ID for tracking.
-    
-    Each message in a workflow gets a unique, incrementing ID that allows
-    the frontend to track which messages it has already displayed. This
-    prevents duplicate messages when polling for updates.
-    
-    Attributes:
-        id: Sequential message ID assigned by the workflow (starts at 1)
-        role: The sender role (user, agent, or system)
-        content: The message text content
-        timestamp: When the message was created
-        metadata: Optional additional data about the message
-    """
-    id: int = Field(description="Sequential message ID assigned by workflow")
-    role: MessageRole
-    content: str
-    timestamp: datetime = Field(default_factory=datetime.now)
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-
-
-ConversationHistory: TypeAlias = List[Message]
+# Old Message and MessageRole types removed - use models.conversation instead
 
 
 class Response(BaseModel):
@@ -74,7 +46,8 @@ class WorkflowState(BaseModel):
     status: str = Field(description="Workflow status")
     query_count: int = Field(default=0, description="Number of queries made")
     last_response: Optional[Response] = Field(default=None)
-    conversation_history: Optional[ConversationHistory] = Field(default=None, description="Conversation history from workflow")
+    message_count: int = Field(default=0, description="Number of messages in conversation")
+    latest_message: Optional[str] = Field(default=None, description="Latest message from agent")
 
 
 class ReactAgentActivityResult(BaseModel):

@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any
 
-from utils.api_client import DurableAgentAPIClient
+from integration_tests.utils.api_client import DurableAgentAPIClient
 from models.trajectory import Trajectory
 
 
@@ -26,10 +26,7 @@ class MCPWeatherFlowTest:
             await asyncio.sleep(2)  # Poll every 2 seconds
             
             # Get conversation history
-            history_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/history"
-            )
-            history_data = history_response.json()
+            history_data = await client.get_conversation_history(workflow_id)
             
             # Check if we have an agent response
             messages = history_data.get("conversation_history", [])
@@ -87,10 +84,7 @@ class MCPWeatherFlowTest:
                 trajectories = []
             
             # Get conversation history for final message
-            history_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/history"
-            )
-            history_data = history_response.json()
+            history_data = await client.get_conversation_history(workflow_id)
             messages = history_data.get("conversation_history", [])
             message = messages[-1].get("content", "") if messages else ""
             

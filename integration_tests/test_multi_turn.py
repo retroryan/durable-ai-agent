@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
-from utils.api_client import DurableAgentAPIClient
+from integration_tests.utils.api_client import DurableAgentAPIClient
 
 
 class MultiTurnConversationTest:
@@ -24,41 +24,37 @@ class MultiTurnConversationTest:
         """Initialize test suite with optional detailed output mode."""
         self.detailed = detailed
     
-    async def wait_for_message_id(
+    async def wait_for_agent_message_count(
         self, 
         client: DurableAgentAPIClient, 
         workflow_id: str, 
-        target_message_id: int,
+        target_count: int,
         timeout: int = 30
     ) -> Dict[str, Any]:
         """
-        Wait for a specific message ID to appear in the conversation history.
+        Wait for a specific number of agent messages to appear in the conversation.
         
         Args:
             client: API client
             workflow_id: Workflow ID
-            target_message_id: The message ID to wait for
+            target_count: The number of agent messages to wait for
             timeout: Maximum time to wait in seconds
             
         Returns:
-            Dict containing the message content and metadata
+            Dict containing the latest agent message content and metadata
         """
         start_time = time.time()
         last_message_count = 0
         
         if self.detailed:
-            print(f"⏳ Waiting for message ID {target_message_id}", end="", flush=True)
+            print(f"⏳ Waiting for {target_count} agent messages", end="", flush=True)
         
         while time.time() - start_time < timeout:
             await asyncio.sleep(2)
             
-            # Get current status
-            status_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/status"
-            )
-            status_data = status_response.json()
-            
-            conversation_history = status_data.get("conversation_history", [])
+            # Get conversation history
+            history_data = await client.get_conversation_history(workflow_id)
+            conversation_history = history_data.get("conversation_history", [])
             
             # Check if we have new messages
             if len(conversation_history) > last_message_count:
@@ -68,39 +64,42 @@ class MultiTurnConversationTest:
             elif self.detailed:
                 print(".", end="", flush=True)
             
-            # Look for our target message
-            for msg in conversation_history:
-                if msg.get("id") == target_message_id and msg.get("role") == "agent":
-                    elapsed = time.time() - start_time
-                    if self.detailed:
-                        print(f"\n✅ Found message ID {target_message_id} after {elapsed:.2f}s")
-                    
-                    # Get tools used for this response
-                    tools_used = await self.get_tools_for_message(
-                        client, workflow_id, target_message_id
-                    )
-                    
-                    return {
-                        "id": msg["id"],
-                        "content": msg["content"],
-                        "timestamp": msg["timestamp"],
-                        "tools_used": tools_used,
-                        "elapsed_time": elapsed
-                    }
+            # Count agent messages
+            agent_messages = [msg for msg in conversation_history if msg.get("role") == "agent"]
+            
+            if len(agent_messages) >= target_count:
+                elapsed = time.time() - start_time
+                latest_agent = agent_messages[-1]
+                
+                if self.detailed:
+                    print(f"\n✅ Found {target_count} agent messages after {elapsed:.2f}s")
+                
+                # Get tools used for this response
+                tools_used = await self.get_tools_for_message(
+                    client, workflow_id, latest_agent["id"]
+                )
+                
+                return {
+                    "id": latest_agent["id"],
+                    "content": latest_agent["content"],
+                    "timestamp": latest_agent["timestamp"],
+                    "tools_used": tools_used,
+                    "elapsed_time": elapsed
+                }
         
         # Timeout - show what we did find
-        print(f"\n❌ Timeout waiting for message ID {target_message_id}")
-        print(f"   Messages in conversation: {len(conversation_history)}")
-        for i, msg in enumerate(conversation_history):
-            print(f"   [{i}] ID: {msg.get('id')}, Role: {msg.get('role')}, Preview: {msg.get('content', '')[:50]}...")
+        agent_messages = [msg for msg in conversation_history if msg.get("role") == "agent"]
+        print(f"\n❌ Timeout waiting for {target_count} agent messages")
+        print(f"   Total messages: {len(conversation_history)}")
+        print(f"   Agent messages: {len(agent_messages)}")
         
-        raise TimeoutError(f"Message ID {target_message_id} not found within {timeout}s")
+        raise TimeoutError(f"{target_count} agent messages not found within {timeout}s")
     
     async def get_tools_for_message(
         self, 
         client: DurableAgentAPIClient, 
         workflow_id: str, 
-        message_id: int
+        message_id: str
     ) -> List[Dict[str, Any]]:
         """
         Get the tools used for a specific message.
@@ -181,9 +180,9 @@ class MultiTurnConversationTest:
         
         print(f"✅ Workflow created: {workflow_id}")
         
-        # Wait for initial greeting (message ID 2)
+        # Wait for initial greeting
         try:
-            greeting = await self.wait_for_message_id(client, workflow_id, 2, timeout=15)
+            greeting = await self.wait_for_agent_message_count(client, workflow_id, 1, timeout=15)
             print(f"\n📝 Initial Response:")
             print("-" * 60)
             print(greeting["content"])
@@ -196,19 +195,19 @@ class MultiTurnConversationTest:
         conversations = [
             {
                 "query": "What's the weather forecast for Napa Valley?",
-                "expected_message_id": 4,
+                "expected_agent_count": 2,  # 1 initial + 1 for this query
                 "expected_tool": "get_weather_forecast",
                 "check_content": ["napa", "forecast", "temperature"]
             },
             {
                 "query": "How about the agricultural conditions in Napa Valley?",
-                "expected_message_id": 6,
+                "expected_agent_count": 3,  # 1 initial + 2 for queries
                 "expected_tool": "get_agricultural_conditions",
                 "check_content": ["agricultural", "soil", "moisture"]
             },
             {
                 "query": "What are the agricultural conditions in Sonoma County?",
-                "expected_message_id": 8,
+                "expected_agent_count": 4,  # 1 initial + 3 for queries
                 "expected_tool": "get_agricultural_conditions",
                 "check_content": ["sonoma", "agricultural", "conditions"]
             }
@@ -225,10 +224,10 @@ class MultiTurnConversationTest:
             
             # Wait for response
             try:
-                response = await self.wait_for_message_id(
+                response = await self.wait_for_agent_message_count(
                     client, 
                     workflow_id, 
-                    conv["expected_message_id"],
+                    conv["expected_agent_count"],
                     timeout=30
                 )
                 
@@ -474,21 +473,18 @@ class MultiTurnConversationTest:
             if not await self.send_message(client, workflow_id, msg):
                 return False
             
-            # Wait for response
-            expected_agent_id = (i + 2) * 2  # 2, 4, 6...
+            # Wait for response (1 initial + i+1 for this response)
+            expected_agent_count = 1 + (i + 1)  # 2, 3, 4...
             try:
-                await self.wait_for_message_id(client, workflow_id, expected_agent_id, timeout=30)
+                await self.wait_for_agent_message_count(client, workflow_id, expected_agent_count, timeout=30)
             except TimeoutError:
                 print(f"❌ Failed to get response {i+1}")
                 return False
         
         # Get final conversation history
         print("\n📊 Checking conversation history...")
-        status_response = await client.client.get(
-            f"{client.base_url}/workflow/{workflow_id}/status"
-        )
-        status_data = status_response.json()
-        conversation_history = status_data.get("conversation_history", [])
+        history_data = await client.get_conversation_history(workflow_id)
+        conversation_history = history_data.get("conversation_history", [])
         
         print(f"Total messages in history: {len(conversation_history)}")
         

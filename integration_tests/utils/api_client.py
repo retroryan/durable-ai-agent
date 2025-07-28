@@ -164,3 +164,43 @@ class DurableAgentAPIClient:
         # Wait for completion (workflow completes immediately in our simple case)
         # In a real system, you might need to poll for completion
         return result
+    
+    async def get_conversation_history(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Get conversation history in the old format for backward compatibility.
+        This converts the new ConversationState format to the old conversation_history format.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            Dict with conversation_history in old format
+        """
+        # Get full conversation state using new endpoint
+        response = await self.client.get(
+            f"{self.base_url}/workflow/{workflow_id}/conversation/full"
+        )
+        response.raise_for_status()
+        conv_state = response.json()
+        
+        # Convert to old format
+        conversation_history = []
+        for msg in conv_state.get("messages", []):
+            # Add user message
+            if msg.get("user_message"):
+                conversation_history.append({
+                    "id": msg.get("id"),
+                    "role": "user",
+                    "content": msg.get("user_message"),
+                    "timestamp": msg.get("user_timestamp")
+                })
+            # Add agent message if present
+            if msg.get("agent_message"):
+                conversation_history.append({
+                    "id": msg.get("id") + "_agent",
+                    "role": "agent",
+                    "content": msg.get("agent_message"),
+                    "timestamp": msg.get("agent_timestamp")
+                })
+        
+        return {"conversation_history": conversation_history}

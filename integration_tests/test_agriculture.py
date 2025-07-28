@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 
-from utils.api_client import DurableAgentAPIClient
+from integration_tests.utils.api_client import DurableAgentAPIClient
 
 
 class AgricultureIntegrationTest:
@@ -50,36 +50,50 @@ class AgricultureIntegrationTest:
             )
             status_data = status_response.json()
             
-            # Check conversation_history if present (same as frontend)
-            conversation_history = status_data.get("conversation_history", [])
-            if conversation_history:
-                # Count agent messages
-                agent_message_count = sum(1 for msg in conversation_history if msg.get("role") == "agent")
+            # Check if we have messages using the new API structure
+            message_count = status_data.get("message_count", 0)
+            latest_message = status_data.get("latest_message")
+            
+            # If we have a latest_message that's not the default processing message
+            if latest_message and latest_message != "Processing your request...":
+                elapsed = time.time() - start_time
                 
-                # If we're expecting a specific number of messages, wait for that count
-                if expected_message_count is not None:
-                    if agent_message_count >= expected_message_count:
-                        elapsed = time.time() - start_time
-                        if self.detailed:
-                            print(f"\n✅ Got agent response #{expected_message_count} after {elapsed:.2f} seconds")
-                            print(f"   Status: {status_data.get('status')}")
-                            print(f"   Messages in history: {len(conversation_history)}")
-                            print(f"   Agent messages: {agent_message_count}")
+                # For detailed output, get full conversation to count agent messages
+                if self.detailed or expected_message_count is not None:
+                    try:
+                        # Get conversation history to count messages
+                        history_data = await client.get_conversation_history(workflow_id)
+                        conversation_history = history_data.get("conversation_history", [])
+                        agent_message_count = sum(1 for msg in conversation_history if msg.get("role") == "agent")
+                        
+                        if expected_message_count is not None:
+                            if agent_message_count >= expected_message_count:
+                                if self.detailed:
+                                    print(f"\n✅ Got agent response #{expected_message_count} after {elapsed:.2f} seconds")
+                                    print(f"   Status: {status_data.get('status')}")
+                                    print(f"   Total messages: {message_count}")
+                                    print(f"   Agent messages: {agent_message_count}")
+                                else:
+                                    print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                                return True, elapsed
                         else:
-                            print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
-                        return True, elapsed
-                else:
-                    # Backward compatibility - any agent message
-                    for msg in conversation_history:
-                        if msg.get("role") == "agent":
-                            elapsed = time.time() - start_time
+                            # Any agent message
                             if self.detailed:
                                 print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
                                 print(f"   Status: {status_data.get('status')}")
-                                print(f"   Messages in history: {len(conversation_history)}")
+                                print(f"   Total messages: {message_count}")
                             else:
                                 print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
                             return True, elapsed
+                    except:
+                        # If getting history fails, fall back to simple check
+                        if expected_message_count is None or message_count >= expected_message_count:
+                            print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                            return True, elapsed
+                else:
+                    # Simple case - just check for any response
+                    print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                    return True, elapsed
             
             # Also check last_response for compatibility
             last_response = status_data.get("last_response", {})
@@ -247,20 +261,26 @@ class AgricultureIntegrationTest:
             )
             final_status_data = final_status_response.json()
             
-            # Try to get message from conversation_history first (like frontend)
-            final_message = ""
-            conversation_history = final_status_data.get("conversation_history", [])
-            if conversation_history:
-                # Find last agent message
-                for msg in reversed(conversation_history):
-                    if msg.get("role") == "agent":
-                        final_message = msg.get("content", "")
-                        break
+            # Get message from new API structure
+            final_message = final_status_data.get("latest_message", "")
             
-            # Fallback to last_response if no conversation history
+            # If no latest_message, try last_response for compatibility
             if not final_message:
                 last_response = final_status_data.get("last_response", {})
                 final_message = last_response.get("message", "")
+            
+            # If still no message, fetch from conversation endpoint
+            if not final_message:
+                try:
+                    history_data = await client.get_conversation_history(workflow_id)
+                    conversation_history = history_data.get("conversation_history", [])
+                    # Find last agent message
+                    for msg in reversed(conversation_history):
+                        if msg.get("role") == "agent":
+                            final_message = msg.get("content", "")
+                            break
+                except:
+                    pass
             
             if self.detailed:
                 print("✅ Answer extracted successfully")
@@ -901,13 +921,9 @@ class AgricultureIntegrationTest:
         print("=" * 80)
         
         try:
-            # Get status which includes conversation history
-            status_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/status"
-            )
-            status_data = status_response.json()
-            
-            conversation_history = status_data.get("conversation_history", [])
+            # Get conversation history using the new helper method
+            history_data = await client.get_conversation_history(workflow_id)
+            conversation_history = history_data.get("conversation_history", [])
             
             if not conversation_history:
                 print("No conversation history found.")

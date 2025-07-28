@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from datetime import datetime
 
-from models.types import Message
+from models.conversation import ConversationMessage
 
 
 class SendMessageRequest(BaseModel):
@@ -31,7 +31,7 @@ class EndConversationResponse(BaseModel):
 
 class ConversationHistoryResponse(BaseModel):
     """Response model for conversation history queries"""
-    conversation_history: List[Message]
+    messages: List[ConversationMessage]
     total_messages: int
     workflow_id: str
 
