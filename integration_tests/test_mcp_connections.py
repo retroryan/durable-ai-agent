@@ -38,10 +38,16 @@ from models.mcp_models import ForecastRequest, HistoricalRequest, AgriculturalRe
 
 async def test_mcp_server():
     """Test all tools in the MCP server."""
+    # For local testing, always use localhost instead of Docker hostname
+    mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+    # Replace Docker hostname with localhost for local testing
+    if "mcp-server" in mcp_url:
+        mcp_url = mcp_url.replace("mcp-server", "localhost")
+    
     server_def = {
         "name": "weather-mcp",
         "connection_type": "http",
-        "url": os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+        "url": mcp_url
     }
     
     manager = MCPClientManager()
@@ -200,10 +206,16 @@ async def test_performance_comparison():
     """Compare performance of location name vs coordinates."""
     import time
     
+    # For local testing, always use localhost instead of Docker hostname
+    mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+    # Replace Docker hostname with localhost for local testing
+    if "mcp-server" in mcp_url:
+        mcp_url = mcp_url.replace("mcp-server", "localhost")
+    
     server_def = {
-        "name": "weather-mcp",
+        "name": "weather-mcp",  
         "connection_type": "http",
-        "url": os.getenv("MCP_SERVER_URL", "http://localhost:7778/mcp")
+        "url": mcp_url
     }
     
     manager = MCPClientManager()

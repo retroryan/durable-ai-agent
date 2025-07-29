@@ -52,5 +52,18 @@ export const api = {
       headers: { 'Content-Type': 'application/json' }
     });
     return handleResponse(response);
+  },
+
+  async getConversation(workflowId, lastSeenMessageId = null) {
+    const url = lastSeenMessageId 
+      ? `${API_URL}/workflow/${workflowId}/conversation?last_seen_message_id=${lastSeenMessageId}`
+      : `${API_URL}/workflow/${workflowId}/conversation`;
+    const response = await fetch(url);
+    return handleResponse(response);
+  },
+
+  async getFullConversation(workflowId) {
+    const response = await fetch(`${API_URL}/workflow/${workflowId}/conversation/full`);
+    return handleResponse(response);
   }
 };

@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 
-from utils.api_client import DurableAgentAPIClient
+from integration_tests.utils.api_client import DurableAgentAPIClient
 
 
 class AgricultureIntegrationTest:
@@ -31,7 +31,7 @@ class AgricultureIntegrationTest:
         """Initialize test suite with optional detailed output mode."""
         self.detailed = detailed
     
-    async def wait_for_agent_response(self, client: DurableAgentAPIClient, workflow_id: str, timeout: int = 60) -> Tuple[bool, float]:
+    async def wait_for_agent_response(self, client: DurableAgentAPIClient, workflow_id: str, timeout: int = 60, expected_message_count: int = None) -> Tuple[bool, float]:
         """Wait for agent response with optional progress indicators."""
         start_time = time.time()
         max_attempts = timeout // 2
@@ -50,20 +50,50 @@ class AgricultureIntegrationTest:
             )
             status_data = status_response.json()
             
-            # Check conversation_history if present (same as frontend)
-            conversation_history = status_data.get("conversation_history", [])
-            if conversation_history:
-                # Look for agent messages
-                for msg in conversation_history:
-                    if msg.get("role") == "agent":
-                        elapsed = time.time() - start_time
-                        if self.detailed:
-                            print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
-                            print(f"   Status: {status_data.get('status')}")
-                            print(f"   Messages in history: {len(conversation_history)}")
+            # Check if we have messages using the new API structure
+            message_count = status_data.get("message_count", 0)
+            latest_message = status_data.get("latest_message")
+            
+            # If we have a latest_message that's not the default processing message
+            if latest_message and latest_message != "Processing your request...":
+                elapsed = time.time() - start_time
+                
+                # For detailed output, get full conversation to count agent messages
+                if self.detailed or expected_message_count is not None:
+                    try:
+                        # Get conversation state to count messages
+                        conv_state = await client.get_conversation_state(workflow_id)
+                        messages = conv_state.get("messages", [])
+                        agent_message_count = sum(1 for msg in messages if msg.get("agent_message"))
+                        
+                        if expected_message_count is not None:
+                            if agent_message_count >= expected_message_count:
+                                if self.detailed:
+                                    print(f"\n✅ Got agent response #{expected_message_count} after {elapsed:.2f} seconds")
+                                    print(f"   Status: {status_data.get('status')}")
+                                    print(f"   Total messages: {message_count}")
+                                    print(f"   Agent messages: {agent_message_count}")
+                                else:
+                                    print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                                return True, elapsed
                         else:
+                            # Any agent message
+                            if self.detailed:
+                                print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
+                                print(f"   Status: {status_data.get('status')}")
+                                print(f"   Total messages: {message_count}")
+                            else:
+                                print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                            return True, elapsed
+                    except:
+                        # If getting history fails, fall back to simple check
+                        if expected_message_count is None or message_count >= expected_message_count:
                             print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
-                        return True, elapsed
+                            return True, elapsed
+                else:
+                    # Simple case - just check for any response
+                    print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                    return True, elapsed
             
             # Also check last_response for compatibility
             last_response = status_data.get("last_response", {})
@@ -196,7 +226,7 @@ class AgricultureIntegrationTest:
                     print(f"   - Message Count: {workflow_details.get('message_count', 0)}")
                     print(f"   - Interaction Count: {workflow_details.get('interaction_count', 0)}")
             
-            # Get trajectories from API
+            # Get trajectories from API - with query parameter for the specific interaction
             if self.detailed:
                 print("\n" + "─" * 60)
                 print("📍 Trajectory Analysis")
@@ -231,20 +261,26 @@ class AgricultureIntegrationTest:
             )
             final_status_data = final_status_response.json()
             
-            # Try to get message from conversation_history first (like frontend)
-            final_message = ""
-            conversation_history = final_status_data.get("conversation_history", [])
-            if conversation_history:
-                # Find last agent message
-                for msg in reversed(conversation_history):
-                    if msg.get("role") == "agent":
-                        final_message = msg.get("content", "")
-                        break
+            # Get message from new API structure
+            final_message = final_status_data.get("latest_message", "")
             
-            # Fallback to last_response if no conversation history
+            # If no latest_message, try last_response for compatibility
             if not final_message:
                 last_response = final_status_data.get("last_response", {})
                 final_message = last_response.get("message", "")
+            
+            # If still no message, fetch from conversation endpoint
+            if not final_message:
+                try:
+                    conv_state = await client.get_conversation_state(workflow_id)
+                    messages = conv_state.get("messages", [])
+                    # Find last agent message
+                    for msg in reversed(messages):
+                        if msg.get("agent_message"):
+                            final_message = msg.get("agent_message", "")
+                            break
+                except:
+                    pass
             
             if self.detailed:
                 print("✅ Answer extracted successfully")
@@ -817,9 +853,8 @@ class AgricultureIntegrationTest:
         for i, (test_name, test_func) in enumerate(tests, 1):
             try:
                 start_time = time.time()
-                # Pass test number and total for detailed mode
+                # Each test creates its own workflow
                 if self.detailed:
-                    # Modify test functions to accept additional parameters
                     result = await test_func(client, i, len(tests))
                 else:
                     result = await test_func(client)
@@ -878,6 +913,46 @@ class AgricultureIntegrationTest:
         print("=" * 80)
         
         return failed
+    
+    async def display_chat_history(self, client: DurableAgentAPIClient, workflow_id: str) -> None:
+        """Display the full chat history from the workflow."""
+        print("\n" + "=" * 80)
+        print("💬 FULL CHAT HISTORY")
+        print("=" * 80)
+        
+        try:
+            # Get conversation state using the new API
+            conv_state = await client.get_conversation_state(workflow_id)
+            messages = conv_state.get("messages", [])
+            
+            if not messages:
+                print("No conversation messages found.")
+                return
+                
+            print(f"Total messages: {len(messages)}\n")
+            
+            for i, msg in enumerate(messages):
+                # Show user message
+                user_content = msg.get("user_message", "")
+                user_timestamp = msg.get("user_timestamp", "")
+                print(f"[{i+1}] USER @ {user_timestamp}:")
+                print(f"    {user_content}")
+                print()
+                
+                # Show agent response if available
+                if msg.get("agent_message"):
+                    agent_content = msg.get("agent_message", "")
+                    agent_timestamp = msg.get("agent_timestamp", "")
+                    print(f"[{i+1}] AGENT @ {agent_timestamp}:")
+                    print(f"    {agent_content}")
+                    print()
+                    print("-" * 80)
+                    print()
+                
+            print("=" * 80)
+            
+        except Exception as e:
+            print(f"❌ Error fetching chat history: {e}")
 
 
 async def main():

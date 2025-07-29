@@ -12,10 +12,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from api.services.workflow_service import WorkflowService
 from models.trajectory import Trajectory
 from models.types import Response, WorkflowInput, WorkflowState, AgenticAIWorkflowState
+from models.conversation import ConversationState, ConversationUpdate
 from models.api_models import (
     SendMessageRequest, SendMessageResponse,
     EndConversationResponse, ConversationHistoryResponse,
@@ -60,10 +62,11 @@ async def lifespan(app: FastAPI):
     config = Settings()
     logger.info(f"Connecting to Temporal at {config.temporal_host}")
 
-    # Create Temporal client
+    # Create Temporal client with Pydantic data converter
     client = await Client.connect(
         config.temporal_host,
         namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     # Initialize workflow service
@@ -169,7 +172,8 @@ async def chat(input_data: WorkflowInput):
         return state
     except Exception as e:
         logger.error(
-            f"Error processing message for workflow_id: {input_data.workflow_id}, error: {e}"
+            f"Error processing message for workflow_id: {input_data.workflow_id}, error: {e}",
+            exc_info=True
         )
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -198,14 +202,10 @@ async def get_workflow_status(workflow_id: str):
             f"Retrieved status for workflow_id: {workflow_id}, status: {state.status}"
         )
         # Debug logging to inspect the actual response
-        if hasattr(state, 'conversation_history') and state.conversation_history:
-            logger.info(f"Status response has {len(state.conversation_history)} messages")
-            for i, msg in enumerate(state.conversation_history[:3]):  # Log first 3 messages
-                logger.info(
-                    f"  Message {i}: id={getattr(msg, 'id', 'NO_ID')}, "
-                    f"role={getattr(msg, 'role', 'NO_ROLE')}, "
-                    f"role_type={type(getattr(msg, 'role', None))}"
-                )
+        if hasattr(state, 'message_count') and state.message_count > 0:
+            logger.info(f"Status response has {state.message_count} messages")
+            if state.latest_message:
+                logger.info(f"  Latest message preview: {state.latest_message[:100]}...")
         return state
     except HTTPException:
         raise
@@ -435,7 +435,7 @@ async def end_conversation(workflow_id: str):
             raise HTTPException(status_code=404, detail="Workflow not found or not running")
         
         # Get message count from final state
-        message_count = len(final_state.get("conversation_history", []))
+        message_count = len(final_state) if isinstance(final_state, list) else 0
         
         return EndConversationResponse(
             status="conversation ended",
@@ -448,28 +448,52 @@ async def end_conversation(workflow_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/workflow/{workflow_id}/history", response_model=ConversationHistoryResponse)
-async def get_history(workflow_id: str):
-    """Query conversation history."""
+@app.get("/workflow/{workflow_id}/conversation")
+async def get_conversation(workflow_id: str, last_seen_message_id: Optional[str] = None):
+    """Get conversation updates since last seen message."""
     if not workflow_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
     try:
-        logger.info(f"Getting conversation history for workflow_id: {workflow_id}")
+        logger.info(f"Getting conversation updates for workflow_id: {workflow_id}, last_seen: {last_seen_message_id}")
         
-        # Get workflow handle
-        handle = workflow_service.client.get_workflow_handle(workflow_id)
-        
-        # Query conversation history
-        history = await handle.query("get_conversation_history")
-        
-        return ConversationHistoryResponse(
-            conversation_history=history,
-            total_messages=len(history),
-            workflow_id=workflow_id
+        conversation_update = await workflow_service.get_conversation_updates(
+            workflow_id, last_seen_message_id
         )
+        
+        if not conversation_update:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+            
+        return {
+            "workflow_id": workflow_id,
+            "conversation_update": conversation_update
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting history for workflow_id: {workflow_id}, error: {e}")
+        logger.error(f"Error getting conversation for workflow_id: {workflow_id}, error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/workflow/{workflow_id}/conversation/full", response_model=ConversationState)
+async def get_full_conversation(workflow_id: str):
+    """Get complete conversation state - use sparingly."""
+    if not workflow_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
+    try:
+        logger.info(f"Getting full conversation for workflow_id: {workflow_id}")
+        
+        handle = workflow_service.client.get_workflow_handle(workflow_id)
+        state_data = await handle.query("get_conversation_state")
+        
+        # Handle the response which could be a dict or ConversationState
+        if isinstance(state_data, dict):
+            return ConversationState(**state_data)
+        return state_data
+    except Exception as e:
+        logger.error(f"Error getting full conversation for workflow_id: {workflow_id}, error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

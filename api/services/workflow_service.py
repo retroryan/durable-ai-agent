@@ -8,6 +8,7 @@ from temporalio.client import Client, WorkflowHandle
 from temporalio.service import RPCError
 
 from models.types import ActivityStatus, Response, WorkflowState
+from models.conversation import ConversationState, ConversationMessage, ConversationUpdate
 from workflows.agentic_ai_workflow import AgenticAIWorkflow
 from datetime import timedelta
 
@@ -45,6 +46,7 @@ class WorkflowService:
         Returns:
             WorkflowState with the result
         """
+        logger.info(f"[process_message] Starting with message: {message[:50]}..., workflow_id: {workflow_id}")
         # Generate workflow ID if not provided
         if not workflow_id:
             workflow_id = f"durable-agent-{uuid.uuid4()}"
@@ -84,18 +86,52 @@ class WorkflowService:
         if not is_existing:
             # Start new workflow
             logger.info(f"Starting new workflow: {workflow_id} for user: {user_name}")
-            handle = await self.client.start_workflow(
-                AgenticAIWorkflow.run,
-                id=workflow_id,
-                task_queue=self.task_queue,
-                workflow_execution_timeout=timedelta(minutes=30),
-            )
-            # Send initial message via signal
-            await handle.signal("prompt", message)
+            try:
+                handle = await self.client.start_workflow(
+                    AgenticAIWorkflow.run,
+                    id=workflow_id,
+                    task_queue=self.task_queue,
+                    execution_timeout=timedelta(minutes=30),
+                )
+                logger.info(f"[process_message] Workflow started successfully: {workflow_id}")
+                # Send initial message via signal
+                await handle.signal("prompt", message)
+                logger.info(f"[process_message] Signal sent successfully: {workflow_id}")
+            except Exception as e:
+                logger.error(f"[process_message] Error starting workflow: {e}", exc_info=True)
+                raise
         
         # Query current state instead of waiting for result
-        await asyncio.sleep(0.5)  # Small delay to allow processing
-        state_data = await handle.query("state")
+        
+        # Get conversation state using the new query method
+        logger.info("About to query get_conversation_state")
+        try:
+            conv_state = await handle.query("get_conversation_state")
+            logger.info(f"Query returned: type={type(conv_state)}, data={conv_state}")
+            
+            # Pydantic data converter handles all serialization
+        except Exception as e:
+            logger.error(f"Error querying conversation state: {e}", exc_info=True)
+            # Create default state
+            conv_state = ConversationState(messages=[], is_processing=True, current_message_id=None)
+        
+        # Get last response message
+        last_message = "Processing your request..."
+        
+        # Pydantic data converter ensures proper type conversion
+        
+        try:
+            if hasattr(conv_state, 'messages') and conv_state.messages:
+                for msg_data in reversed(conv_state.messages):
+                    msg = msg_data
+                    if msg.is_complete and msg.agent_message:
+                        last_message = msg.agent_message
+                        break
+        except AttributeError as e:
+            logger.error(f"AttributeError processing messages: {e}, conv_state type: {type(conv_state)}, conv_state: {conv_state}", exc_info=True)
+            # Type is guaranteed by Pydantic data converter
+        except Exception as e:
+            logger.error(f"Other error processing messages: {e}, conv_state type: {type(conv_state)}", exc_info=True)
         
         # Create workflow state
         state = WorkflowState(
@@ -103,10 +139,12 @@ class WorkflowService:
             status="running" if is_existing else "started",
             query_count=0,  # AgenticAIWorkflow doesn't track query count
             last_response=Response(
-                message=state_data.get("last_response", "Processing your request..."),
+                message=last_message,
                 event_count=0,
                 query_count=0
             ),
+            message_count=0,  # Will be populated on next query
+            latest_message=last_message
         )
 
         return state
@@ -127,39 +165,30 @@ class WorkflowService:
 
             # Get actual workflow state from query
             last_response = None
+            message_count = 0
+            latest_message = None
             if description.status and description.status.name == "RUNNING":
                 try:
-                    # Query the workflow for its current state
-                    state_data = await handle.query("state")
-                    logger.info(f"Queried state for {workflow_id}: {state_data}")
+                    # Query the workflow for its current conversation state
+                    conv_state = await handle.query("get_conversation_state")
+                    logger.info(f"Queried conversation state for {workflow_id}: {conv_state}")
                     
-                    # Log conversation history details
-                    conv_history = state_data.get("conversation_history", [])
-                    if conv_history:
-                        logger.info(f"Conversation history has {len(conv_history)} messages")
-                        for i, msg in enumerate(conv_history):
-                            logger.info(f"  Message {i}: id={msg.get('id')}, role={msg.get('role')}, content_preview={msg.get('content', '')[:50]}...")
+                    # Pydantic data converter handles all serialization
                     
-                    # Get the last response from conversation history
-                    conversation_history = state_data.get("conversation_history", [])
-                    if conversation_history:
-                        # Find the last agent message
-                        for msg in reversed(conversation_history):
-                            if msg.get("role") == "agent":
+                    # Extract summary data from conversation state
+                    message_count = len(conv_state.messages)
+                    if conv_state.messages:
+                        # Find the latest completed message
+                        for msg in reversed(conv_state.messages):
+                            if msg.agent_message:
+                                latest_message = msg.agent_message
                                 last_response = Response(
-                                    message=msg.get("content", ""),
+                                    message=msg.agent_message,
                                     event_count=0,
                                     query_count=0
                                 )
                                 break
                     
-                    # If no agent response yet, use the status from state
-                    if not last_response and state_data.get("last_response"):
-                        last_response = Response(
-                            message=state_data["last_response"],
-                            event_count=0,
-                            query_count=0
-                        )
                 except Exception as e:
                     logger.warning(
                         f"Could not query workflow state for workflow_id: {workflow_id}, error: {e}"
@@ -180,7 +209,8 @@ class WorkflowService:
                 status=workflow_status,
                 query_count=0,  # AgenticAIWorkflow doesn't track query count
                 last_response=last_response,
-                conversation_history=conversation_history,
+                message_count=message_count,
+                latest_message=latest_message
             )
 
         except RPCError:
@@ -352,22 +382,29 @@ class WorkflowService:
             )
             return None
     
-    async def get_conversation_history(self, workflow_id: str) -> Optional[list]:
+    
+    async def get_conversation_updates(self, workflow_id: str, last_seen_message_id: Optional[str] = None) -> Optional[ConversationUpdate]:
         """
-        Get the conversation history from a workflow.
+        Get conversation updates since last seen message.
         
         Args:
             workflow_id: The workflow ID
+            last_seen_message_id: ID of the last message the client has seen
             
         Returns:
-            List of messages or None if not found
+            ConversationUpdate or None if not found
         """
         try:
             handle = self.client.get_workflow_handle(workflow_id)
-            return await handle.query("history")
+            
+            # Query for updates
+            updates = await handle.query("get_conversation_updates", last_seen_message_id)
+            
+            return updates
+            
         except Exception as e:
             logger.error(
-                f"Error getting conversation history for workflow_id: {workflow_id}, error: {e}"
+                f"Error getting conversation updates for workflow_id: {workflow_id}, error: {e}"
             )
             return None
     

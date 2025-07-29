@@ -8,13 +8,14 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from models.trajectory import Trajectory
+    from models.conversation import ConversationMessage, ConversationState, ConversationUpdate
     from models.types import (
         ActivityStatus,
         ExtractAgentActivityResult,
         ReactAgentActivityResult,
         ToolExecutionRequest,
         ToolExecutionResult,
-        WorkflowStatus, WorkflowSummary, ConversationHistory, Message, MessageRole,
+        WorkflowStatus, WorkflowSummary,
     )
     from activities.extract_agent_activity import ExtractAgentActivity
     from activities.react_agent_activity import ReactAgentActivity
@@ -28,21 +29,24 @@ class AgenticAIWorkflow:
     def __init__(self):
         """Initialize workflow state.
         """
+        workflow.logger.info("[AgenticAIWorkflow] Initializing workflow state")
         # Trajectory state - automatically persisted by Temporal
         self.trajectories: List[Trajectory] = []
         self.current_iteration = 0
         self.execution_time = 0.0
         self.workflow_status = WorkflowStatus.INITIALIZED
-        self.prompt_queue: Deque[str] = deque()
         self.user_name: str = "default_user"
         self.chat_ended: bool = False
-        self.conversation_history: ConversationHistory = []
-        # Sequential message ID counter - ensures each message gets a unique ID
-        # This allows the frontend to track which messages it has already displayed
-        self.message_id_counter: int = 0
+        
+        # New conversation management
+        self.conversation_messages: List[ConversationMessage] = []
+        self.pending_user_message: Optional[str] = None
+        self.current_message_id: Optional[str] = None
+        self.is_processing: bool = False
+        workflow.logger.info("[AgenticAIWorkflow] Workflow state initialized successfully")
 
     @workflow.run
-    async def run(self, workflowSummary: Optional[WorkflowSummary] = None) -> ConversationHistory:
+    async def run(self, workflowSummary: Optional[WorkflowSummary] = None) -> List[ConversationMessage]:
         """
         Main workflow execution loop.
 
@@ -50,7 +54,7 @@ class AgenticAIWorkflow:
            workflowSummary: Optional summary of the workflow to initialize state
 
         Returns:
-            ConversationHistory with all messages
+            List of ConversationMessage objects
         """
         # Initialize from workflow summary if provided
         if workflowSummary:
@@ -67,34 +71,41 @@ class AgenticAIWorkflow:
         while True:
             # Wait for prompt or end signal
             await workflow.wait_condition(
-                lambda: bool(self.prompt_queue) or self.chat_ended
+                lambda: self.pending_user_message is not None or self.chat_ended
             )
             
             # Check if chat should end
             if self.chat_ended:
-                workflow.logger.info("[AgenticAIWorkflow] Chat ending, returning conversation history")
-                return self.conversation_history
+                workflow.logger.info("[AgenticAIWorkflow] Chat ending, returning conversation messages")
+                return self.conversation_messages
                 
-            # Process pending prompts
-            if self.prompt_queue:
+            # Process pending message
+            if self.pending_user_message:
                 await self.process_prompt_agent_loop()
                 self.current_iteration += 1
 
     async def process_prompt_agent_loop(self):
         """Process a single prompt through the agent loop."""
-        if not self.prompt_queue:
+        if not self.pending_user_message:
             return
 
-        try:
-            # Peek at the next prompt without removing it
-            next_prompt = self.prompt_queue[0] if self.prompt_queue else None
+        # Create conversation message when we start processing
+        conversation_msg = ConversationMessage(
+            user_message=self.pending_user_message,
+            user_timestamp=workflow.now()
+        )
+        self.current_message_id = conversation_msg.id
+        self.conversation_messages.append(conversation_msg)
+        self.is_processing = True
+        self.workflow_status = WorkflowStatus.RUNNING_REACT_LOOP
 
-            workflow.logger.info(f"[AgenticAIWorkflow] Processing prompt: {next_prompt}")
+        try:
+            workflow.logger.info(f"[AgenticAIWorkflow] Processing prompt: {self.pending_user_message}")
             
             # Run the React agent loop
             # NOTE: _run_react_loop modifies self.trajectories directly (instance variable)
             execution_time = await self._run_react_loop(
-                prompt=next_prompt,
+                prompt=self.pending_user_message,
                 user_name=self.user_name
             )
             
@@ -102,53 +113,45 @@ class AgenticAIWorkflow:
             self.execution_time = execution_time
 
             # Extract final answer using the trajectories from instance variable
-            # No need to pass trajectories as a parameter since we're using self.trajectories
             self.workflow_status = WorkflowStatus.EXTRACTING_ANSWER
             final_answer = await self._extract_final_answer(
                 trajectories=self.trajectories,
-                prompt=next_prompt,
+                prompt=self.pending_user_message,
                 user_name=self.user_name
             )
             
             # Process the result
             response_message = self._format_response(final_answer, self.trajectories)
             
-            # Save to conversation history
-            self.message_id_counter += 1
-            agent_message = Message(
-                id=self.message_id_counter,
-                role=MessageRole.AGENT,
-                content=response_message,
-                timestamp=workflow.now()
+            # Update the conversation message with response
+            conversation_msg.agent_message = response_message
+            conversation_msg.agent_timestamp = workflow.now()
+            conversation_msg.tools_used = Trajectory.get_tools_used_from_trajectories(self.trajectories)
+            conversation_msg.processing_time_ms = int(
+                (conversation_msg.agent_timestamp - conversation_msg.user_timestamp).total_seconds() * 1000
             )
-            self.conversation_history.append(agent_message)
             
             # Extract tools used from trajectories for logging
-            tools_used = Trajectory.get_tools_used_from_trajectories(self.trajectories)
+            tools_used = conversation_msg.tools_used
 
             # Log summary
             workflow.logger.info(
                 f"[AgenticAIWorkflow] Prompt processed successfully. Tools used: {', '.join(tools_used) if tools_used else 'None'}, "
                 f"Execution time: {execution_time:.2f}s"
             )
-            # Set status to waiting for next message. This is different from chat_ended:
-            # - WAITING_FOR_INPUT: Workflow is idle but still running, ready for more messages
-            # - chat_ended=True: Workflow will terminate and return conversation history
+            # Set status to waiting for next message
             self.workflow_status = WorkflowStatus.WAITING_FOR_INPUT
-            # Remove the processed prompt from the queue
-            prompt = self.prompt_queue.popleft()
 
         except Exception as e:
             workflow.logger.error(f"[AgenticAIWorkflow] Error processing prompt: {e}")
-            self.message_id_counter += 1
-            error_message = Message(
-                id=self.message_id_counter,
-                role=MessageRole.AGENT,
-                content=f"Error processing prompt: {e}",
-                timestamp=workflow.now()
-            )
-            self.conversation_history.append(error_message)
+            conversation_msg.error = str(e)
+            conversation_msg.agent_timestamp = workflow.now()
             self.workflow_status = WorkflowStatus.FAILED
+        
+        finally:
+            self.pending_user_message = None
+            self.current_message_id = None
+            self.is_processing = False
 
 
     async def _run_react_loop(
@@ -438,23 +441,12 @@ class AgenticAIWorkflow:
 
     @workflow.signal
     async def prompt(self, message: str):
-        """Signal handler to add new prompts to the queue.
+        """Signal handler to queue a message for processing.
         
-        When a user sends a message, it's added to both the prompt queue
-        for processing and the conversation history with a unique sequential ID.
-        This ensures the frontend can track which messages it has displayed.
+        Messages are not stored until processing begins.
         """
         workflow.logger.info(f"[AgenticAIWorkflow] Received prompt signal: {message}")
-        self.prompt_queue.append(message)
-        # Add user message to conversation history with sequential ID
-        self.message_id_counter += 1
-        user_message = Message(
-            id=self.message_id_counter,
-            role=MessageRole.USER,
-            content=message,
-            timestamp=workflow.now()
-        )
-        self.conversation_history.append(user_message)
+        self.pending_user_message = message
 
     @workflow.signal  
     async def end_chat(self):
@@ -463,57 +455,56 @@ class AgenticAIWorkflow:
         self.chat_ended = True
 
     @workflow.query
-    def state(self) -> Dict[str, Any]:
-        """Query handler for current state (compatibility with API service).
-        
-        Returns workflow state including recent conversation history.
-        To prevent sending too much data, only the last 10 messages are included.
-        Each message has a sequential ID that allows the frontend to track
-        which messages it has already displayed.
-        """
-        latest_msg = self.get_latest_response()
-        # Return only last 10 messages to avoid sending too much data
-        recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
-        # Convert Message objects to dicts for proper JSON serialization
-        # Use mode='json' to ensure enums are serialized as their values
-        serialized_history = [msg.model_dump(mode='json') for msg in recent_history]
-        
-
-        result = {
-            "last_response": latest_msg.content if latest_msg else "Processing your request...",
-            "status": self.workflow_status,
-            "conversation_history": serialized_history,
-            "pending_prompts": len(self.prompt_queue),
-            "is_processing": self.workflow_status == WorkflowStatus.RUNNING_REACT_LOOP
-        }
-        
-        return result
+    def get_conversation_state(self) -> ConversationState:
+        """Get complete conversation state - use for initial load."""
+        return ConversationState(
+            messages=self.conversation_messages,
+            is_processing=self.is_processing,
+            current_message_id=self.current_message_id
+        )
     
     @workflow.query
-    def get_conversation_history(self) -> ConversationHistory:
-        """Query handler to get the full conversation history."""
-        workflow.logger.info(f"[AgenticAIWorkflow.get_conversation_history] Returning {len(self.conversation_history)} messages")
-        if self.conversation_history:
-            # Log details about messages for debugging
-            for i, msg in enumerate(self.conversation_history):
-                workflow.logger.info(
-                    f"[AgenticAIWorkflow.get_conversation_history] Message {i}: "
-                    f"id={msg.id}, role={msg.role.value}, content_preview={msg.content[:50]}..."
-                )
-        return self.conversation_history
+    def get_conversation_updates(self, last_seen_message_id: Optional[str] = None) -> ConversationUpdate:
+        """Get updates since last seen message - use for polling."""
+        if not last_seen_message_id:
+            # First request, return all messages
+            return ConversationUpdate(
+                new_messages=self.conversation_messages,
+                updated_messages=[],
+                is_processing=self.is_processing,
+                current_message_id=self.current_message_id,
+                last_seen_message_id=self.conversation_messages[-1].id if self.conversation_messages else None
+            )
+        
+        # Find messages after last_seen_message_id
+        new_messages = []
+        updated_messages = []
+        found_last_seen = False
+        
+        for msg in self.conversation_messages:
+            if found_last_seen:
+                new_messages.append(msg)
+            elif msg.id == last_seen_message_id:
+                found_last_seen = True
+                # Check if this message was updated since last seen
+                if not msg.is_complete:
+                    updated_messages.append(msg)
+        
+        return ConversationUpdate(
+            new_messages=new_messages,
+            updated_messages=updated_messages,
+            is_processing=self.is_processing,
+            current_message_id=self.current_message_id,
+            last_seen_message_id=self.conversation_messages[-1].id if self.conversation_messages else last_seen_message_id
+        )
 
     @workflow.query
-    def get_latest_response(self) -> Optional[Message]:
-        """Get the latest agent response."""
-        for msg in reversed(self.conversation_history):
-            if msg.role == MessageRole.AGENT:
+    def get_latest_response(self) -> Optional[ConversationMessage]:
+        """Get the latest completed conversation message."""
+        for msg in reversed(self.conversation_messages):
+            if msg.is_complete:
                 return msg
         return None
-
-    @workflow.query
-    def get_pending_prompts(self) -> List[str]:
-        """Get list of prompts waiting to be processed."""
-        return list(self.prompt_queue)
     
     @workflow.query
     def get_workflow_status(self) -> str:
@@ -537,10 +528,11 @@ class AgenticAIWorkflow:
         return {
             "status": self.workflow_status,
             "user_name": self.user_name,
-            "message_count": len(self.conversation_history),
-            "pending_prompts": len(self.prompt_queue),
+            "message_count": len(self.conversation_messages),
+            "pending_message": self.pending_user_message is not None,
             "current_iteration": self.current_iteration,
             "tools_used": tools_used,
             "execution_time": self.execution_time,
             "trajectory_count": len(self.trajectories),
         }
+    

@@ -164,3 +164,19 @@ class DurableAgentAPIClient:
         # Wait for completion (workflow completes immediately in our simple case)
         # In a real system, you might need to poll for completion
         return result
+    
+    async def get_conversation_state(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Get the full conversation state in the new format.
+        
+        Args:
+            workflow_id: The workflow ID
+            
+        Returns:
+            Dict with ConversationState including messages
+        """
+        response = await self.client.get(
+            f"{self.base_url}/workflow/{workflow_id}/conversation/full"
+        )
+        response.raise_for_status()
+        return response.json()

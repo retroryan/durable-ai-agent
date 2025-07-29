@@ -1,9 +1,6 @@
 # Integration Tests
 
-This directory contains integration tests for the Durable AI Agent project. The test suite has been simplified to focus on two distinct types of testing:
-
-1. **MCP Connection Tests** - Test MCP server connections via HTTP
-2. **API E2E Tests** - Test complete workflows through the API
+This directory contains integration tests for the Durable AI Agent project. The test suite focuses on verifying different aspects of the system through direct Python programs.
 
 ## Test Philosophy
 
@@ -17,10 +14,13 @@ All tests are **direct Python programs (not pytest)** to maintain simplicity and
 
 ```
 integration_tests/
-├── test_mcp_connections.py  # Tests STDIO and HTTP connections to MCP servers
-├── test_api_e2e.py         # Tests complete workflows through the API
-├── test_agriculture.py     # Tests agricultural tools with detailed React loop visibility
-└── run_integration_tests.py # Test runner for all tests
+├── test_mcp_connections.py   # Tests HTTP connections to MCP servers
+├── test_api_e2e.py          # Tests complete MCP weather tool flow through API
+├── test_agriculture.py      # Comprehensive agricultural tool tests with React loop visibility
+├── test_multi_turn.py       # Tests multi-turn conversation capabilities
+├── run_integration_tests.py # Test runner that executes MCP and API tests
+└── utils/
+    └── api_client.py        # Shared API client with conversation history helpers
 ```
 
 ## Running the Tests
@@ -30,48 +30,106 @@ integration_tests/
 - Python environment with Poetry installed
 - Project dependencies installed: `poetry install`
 - `.env` file configured (copy from `.env.example` if needed)
+- Docker services running: `docker-compose up -d`
 
-### Mode 1: MCP Connection Tests (Local)
-
-These tests verify that the MCP server can be accessed via HTTP connection.
+### Quick Start - Run All Tests
 
 ```bash
-# Start the MCP server locally
-poetry run python scripts/run_mcp_server.py
+# Run the test suite (MCP + API tests)
+poetry run python integration_tests/run_integration_tests.py
 
-# In another terminal, run the connection tests
+# Run only MCP connection tests
+poetry run python integration_tests/run_integration_tests.py --mcp-only
+
+# Run only API E2E tests
+poetry run python integration_tests/run_integration_tests.py --api-only
+```
+
+### Individual Test Details
+
+#### 1. MCP Connection Tests (`test_mcp_connections.py`)
+
+Tests HTTP connections to the MCP server and validates all weather tools.
+
+```bash
 poetry run python integration_tests/test_mcp_connections.py
-
-# When done, stop the MCP server
-poetry run python scripts/stop_mcp_server.py
 ```
 
-The test will:
-- Test HTTP connection to the MCP server on port 7778
-- Verify all three tools (forecast, historical, agricultural) are available
-- Test invocation of each tool
-- Display clear pass/fail results for each tool
+**What it tests:**
+- Connection to MCP server on port 7778
+- Lists and verifies all 3 tools are available
+- Tests each tool with Pydantic models:
+  - `get_weather_forecast`
+  - `get_historical_weather`
+  - `get_agricultural_conditions`
+- Validates Pydantic model validation (coordinate conversion, error handling)
+- Performance comparison (coordinates vs location names)
 
-### Mode 2: API E2E Tests (Docker Compose)
+**Note:** Automatically handles Docker vs local hostname resolution.
 
-These tests verify complete workflows through the API, including tool selection and execution.
+#### 2. API E2E Tests (`test_api_e2e.py`)
+
+Tests the complete MCP weather tool flow through the API.
 
 ```bash
-# Make sure MCP server is stopped first
-poetry run python scripts/stop_mcp_server.py
-
-# Start all services with docker-compose
-docker-compose up -d
-
-# Or with weather proxy profile
-docker-compose --profile weather_proxy up -d
-
-# Run the E2E tests
 poetry run python integration_tests/test_api_e2e.py
-
-# When done, stop docker-compose
-docker-compose down
 ```
+
+**What it tests:**
+- Complete workflow execution via `/chat` endpoint
+- React agent tool selection
+- MCP tool execution flow
+- Response quality and format
+- Trajectory analysis
+
+#### 3. Agriculture Tests (`test_agriculture.py`)
+
+Comprehensive integration tests for agricultural use cases with detailed React loop visibility.
+
+```bash
+# Run all tests
+poetry run python integration_tests/test_agriculture.py
+
+# Run first 3 tests
+poetry run python integration_tests/test_agriculture.py 3
+
+# Run with detailed output (shows full React loop)
+poetry run python integration_tests/test_agriculture.py -d
+
+# Run 2 tests with detailed output
+poetry run python integration_tests/test_agriculture.py -d 2
+```
+
+**What it tests:**
+- Weather forecast scenarios
+- Historical weather queries
+- Agricultural conditions
+- Multi-tool workflows
+- Edge cases and error handling
+
+**Detailed mode shows:**
+- Complete React loop iterations (Thought → Action → Observation)
+- Tool selection reasoning
+- Execution timing
+- Full trajectory analysis
+
+#### 4. Multi-Turn Conversation Tests (`test_multi_turn.py`)
+
+Tests multi-turn conversation capabilities (Note: Currently disabled in test runner).
+
+```bash
+poetry run python integration_tests/test_multi_turn.py
+
+# Run with detailed output
+poetry run python integration_tests/test_multi_turn.py -d
+```
+
+**What it tests:**
+- Message ordering and persistence
+- Context retention across turns
+- Tool usage in conversations
+- Conversation history tracking
+- Message ID validation
 
 ## Environment Configuration
 
@@ -79,115 +137,100 @@ The tests use environment variables from `.env`:
 
 ```bash
 # MCP Server Configuration
-MCP_SERVER_HOST=localhost
-MCP_SERVER_PORT=7778
-MCP_SERVER_URL=http://localhost:7778/mcp
+# Docker hostname is automatically replaced with localhost for local testing
+MCP_SERVER_URL=http://mcp-server:7778/mcp
 
 # API Configuration (for E2E tests)
 API_URL=http://localhost:8000
+API_PORT=8000
+
+# Other settings
+MOCK_WEATHER=true  # Set to false for real API calls
 ```
 
-## Test Details
+## Test Output Examples
 
-### test_mcp_connections.py
-
-Tests HTTP connection to the MCP server:
-- **HTTP Test**: Connects to the MCP server on port 7778 with all three tools
-- **Tool Testing**: Invokes each of the three tools with sample data
-
-Output example:
+### Successful MCP Connection Test
 ```
-=== Testing MCP Server (HTTP) ===
+=== Testing MCP Weather Server ===
 URL: http://localhost:7778/mcp
-✓ Connected to server
+
+1. Connecting to server...
+✓ Connected
+
+2. Listing tools...
 ✓ Found 3 tools:
-   - get_weather_forecast
-   - get_historical_weather
-   - get_agricultural_conditions
+  - get_weather_forecast
+  - get_historical_weather
+  - get_agricultural_conditions
+✓ All expected tools found!
 
-Testing get_weather_forecast:
-✓ Tool invocation successful, got response with 5 keys
+3. Testing each tool:
+  ✓ Forecast: Weather forecast for Seattle (3 days)
+  ✓ Historical: Historical weather for Seattle from 2024-01-01 to 2024-01-07
+  ✓ Agricultural: Agricultural conditions for Iowa (5 days)
 
-Testing get_historical_weather:
-✓ Tool invocation successful, got response with 4 keys
+✓ All tests passed!
+```
 
-Testing get_agricultural_conditions:
-✓ Tool invocation successful, got response with 6 keys
-
-✓ MCP server test passed!
-
+### Test Runner Summary
+```
+============================================================
 SUMMARY
-Total tools tested: 3
-All tests passed!
+============================================================
+Tests run:     2
+Passed:        2
+Failed:        0
+
+Overall:       PASSED
 ```
-
-### test_api_e2e.py
-
-Tests complete workflows through the API:
-- Sends weather-related queries
-- Verifies tool selection and execution
-- Checks response quality
-- Tests multiple tool scenarios
-
-### test_agriculture.py
-
-Comprehensive integration tests for agricultural tools with detailed React loop visibility:
-- Tests all weather and agricultural tools (forecast, historical, agricultural conditions)
-- Provides standard or detailed output modes
-- Shows AI agent's reasoning process (Thought → Action → Observation)
-- Supports running specific number of tests
-
-Run with:
-```bash
-# Run all tests
-poetry run python integration_tests/test_agriculture.py
-
-# Run first 2 tests
-poetry run python integration_tests/test_agriculture.py 2
-
-# Run with detailed React loop output
-poetry run python integration_tests/test_agriculture.py -d
-
-# Run 3 tests with detailed output
-poetry run python integration_tests/test_agriculture.py -d 3
-```
-
-Detailed mode shows:
-- Complete React loop iterations
-- Tool selection reasoning
-- Execution timing
-- Full trajectory analysis
 
 ## Troubleshooting
 
-### MCP Connection Tests Failing
+### Common Issues
 
-1. **HTTP Test Fails**:
-   - Ensure MCP server is running: `poetry run python scripts/run_mcp_server.py`
-   - Check that port 7778 is not in use: `lsof -i :7778`
-   - Verify the server URL in `.env`
-   - Check server health: `curl http://localhost:7778/health`
+1. **MCP Connection Failed**
+   ```
+   Client failed to connect: [Errno 8] nodename nor servname provided, or not known
+   ```
+   - The test automatically handles Docker hostname resolution
+   - Ensure MCP server container is running: `docker ps | grep mcp`
+   - Check port 7778 is mapped: `docker ps` should show `0.0.0.0:7778->7778/tcp`
 
-### API E2E Tests Failing
+2. **API Connection Refused**
+   - Ensure all services are running: `docker-compose ps`
+   - Check API health: `curl http://localhost:8000/health`
+   - Verify Temporal is accessible: http://localhost:8080
 
-1. **Connection Refused**:
-   - Ensure docker-compose is running: `docker-compose ps`
-   - Check that the API is healthy: `curl http://localhost:8000/health`
-   - Verify Temporal UI is accessible at http://localhost:8080
-
-2. **Workflow Errors**:
+3. **Workflow Timeouts**
    - Check worker logs: `docker-compose logs worker`
-   - Verify MCP proxy is running: `docker-compose logs weather-proxy`
-   - Check for any Python errors in the logs
+   - Ensure worker is processing tasks
+   - Verify MCP server is responding
+
+### Debugging Tips
+
+- Add `-d` flag to tests for detailed output
+- Check Docker logs: `docker-compose logs -f [service]`
+- Verify environment variables are loaded (tests print this)
+- Use curl to test endpoints directly
+
+## API Changes Note
+
+The tests have been updated to work with the new conversation API structure:
+- Uses `message_count` and `latest_message` instead of `conversation_history`
+- Fetches conversation updates via `/conversation` endpoint
+- Handles UUID-based message IDs
+- Includes conversion helpers for backward compatibility in tests
 
 ## Adding New Tests
 
-Keep tests simple and focused:
+Follow the simple pattern:
 
 ```python
 #!/usr/bin/env python3
 """Test description here."""
 import asyncio
+import sys
 
 async def test_something():
     """Test specific functionality."""
@@ -197,18 +240,15 @@ async def test_something():
     return True
 
 async def main():
-    if await test_something():
-        return 0
-    return 1
+    success = await test_something()
+    return 0 if success else 1
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
 ```
 
-## Important Notes
-
-- Always stop local MCP servers before starting docker-compose to avoid port conflicts
-- Tests are designed to be run independently, not as part of a test suite
-- Each test provides clear console output for easy debugging
-- No complex test frameworks or fixtures - just simple Python scripts
-- The `test_agriculture.py` test requires docker-compose to be running as it tests the full workflow
+Keep tests:
+- Simple and focused
+- Self-contained
+- With clear console output
+- Using standard exit codes (0 = success, 1 = failure)

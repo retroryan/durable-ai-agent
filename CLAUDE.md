@@ -115,8 +115,7 @@ The application follows a microservices architecture with these key components:
 1. **API Server** (`api/`) - FastAPI application providing REST endpoints for workflow management
 2. **Worker** (`worker/`) - Processes Temporal workflows and activities
 3. **Workflows** (`workflows/`) - Durable workflow definitions
-   - `SimpleAgentWorkflow` - Main workflow that routes messages
-   - `AgenticAIWorkflow` - Implements React reasoning loop for complex queries
+   - `AgenticAIWorkflow` - Main workflow implementing React reasoning loop for AI-powered conversations
 4. **Activities** (`activities/`) - Atomic units of work
    - `ReactAgentActivity` - Performs reasoning and tool selection
    - `ToolExecutionActivity` - Executes selected tools
@@ -233,11 +232,12 @@ Common utilities extracted for MCP activities:
 - Integration tests require services to be running via docker-compose
 
 
-## Workflow Routing and Magic Words
+## Workflow Design
 
-The `SimpleAgentWorkflow` acts as a router for different reasoning patterns:
-- Messages starting with "weather:" trigger the `AgenticAIWorkflow` as a child workflow
-- This demonstrates how different query types can use different reasoning strategies
+The `AgenticAIWorkflow` implements the complete conversation flow:
+- Handles all messages through a React (Reason-Act) reasoning loop
+- Dynamically selects and executes tools based on query context
+- Maintains conversation state across multiple interactions
 - Future enhancement: Use a classification agent to automatically select appropriate tool sets
 
 ## Important Notes
