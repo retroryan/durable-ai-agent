@@ -116,6 +116,9 @@ def setup_file_logging(
 
         # Log startup message
         logging.info(f"{service_name} logging initialized. Log file: {log_filename}")
+        
+        # Configure Temporal-specific logging to prevent DEBUG logs from activities
+        configure_temporal_logging(log_level)
 
         return log_filename
     except Exception as e:
@@ -127,6 +130,8 @@ def configure_temporal_logging(level: int = logging.INFO):
     """Configure Temporal-specific loggers."""
     logging.getLogger("temporalio").setLevel(level)
     logging.getLogger("temporal.workflow").setLevel(level)
+    # Set temporalio.activity to INFO to prevent DEBUG logs of activity results
+    logging.getLogger("temporalio.activity").setLevel(logging.INFO)
 
 
 def test_ollama_connectivity():

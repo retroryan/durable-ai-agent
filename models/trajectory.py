@@ -16,6 +16,14 @@ class Trajectory(BaseModel):
     error: Optional[str] = Field(default=None, description="Error message if execution failed")
     timestamp: datetime = Field(default_factory=datetime.now, description="When this step occurred")
 
+    def __repr__(self) -> str:
+        """Return a concise representation without exposing full details."""
+        return f"Trajectory(iteration={self.iteration}, tool={self.tool_name}, complete={self.is_complete()})"
+    
+    def __str__(self) -> str:
+        """Return a concise string representation."""
+        return self.__repr__()
+
     def is_complete(self) -> bool:
         """Check if this trajectory step has been completed with an observation or error."""
         return self.observation is not None or self.error is not None

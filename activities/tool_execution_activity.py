@@ -52,16 +52,11 @@ class ToolExecutionActivity:
         tool_args: Dict[str, Any],
         logger: logging.Logger
     ) -> str:
-        """Execute an MCP tool and return the observation."""
+        """Execute an MCP tool using FastMCP-aligned pattern."""
         logger.debug(f"Executing MCP tool: {tool_name}")
         
         # Get MCP configuration
         mcp_config = tool.get_mcp_config()
-        
-        # Get or create MCP client
-        client = await self.mcp_client_manager.get_client(
-            mcp_config.server_definition
-        )
         
         # Create Pydantic model instance from tool_args
         # The tool's args_model contains the Pydantic model class
@@ -71,11 +66,18 @@ class ToolExecutionActivity:
         # MCP tools expect {"request": <Pydantic model instance>}
         mcp_arguments = {"request": request_instance}
         
-        # Call the MCP tool with the Pydantic model
+        # Define progress handler for long-running operations
+        async def progress_handler(current: float, total: Optional[float], message: Optional[str]):
+            if message:
+                logger.info(f"Progress: {message}")
+        
+        # Use the new execute_tool method - NO get_client!
         logger.info(f"Calling MCP tool: {mcp_config.tool_name} with Pydantic model: {model_class.__name__}")
-        result = await client.call_tool(
-            name=mcp_config.tool_name,
-            arguments=mcp_arguments
+        result = await self.mcp_client_manager.execute_tool(
+            server_def=mcp_config.server_definition,
+            tool_name=mcp_config.tool_name,
+            arguments=mcp_arguments,
+            progress_handler=progress_handler
         )
         
         # Process MCP result with better error handling
@@ -171,13 +173,4 @@ class ToolExecutionActivity:
 
         except Exception as e:
             logger.error(f"Tool execution error: {e}", exc_info=True)
-            execution_time = time.time() - start_time
-            return self._create_error_result(
-                str(e),
-                trajectories,
-                execution_time
-            )
-    
-    async def cleanup(self):
-        """Clean up MCP connections"""
-        await self.mcp_client_manager.cleanup()
+            raise  # Let it propagate for Temporal to retry

@@ -83,7 +83,7 @@ class ExtractAgentActivity:
                 f"[ExtractAgentActivity Activity] Extract completed - Answer: {answer}"
             )
             activity.logger.debug(
-                f"[ExtractAgentActivity Activity] Full extract result: {extract_result}"
+                f"[ExtractAgentActivity Activity] Extract completed with reasoning length: {len(reasoning) if reasoning else 0}"
             )
 
             return ExtractAgentActivityResult(

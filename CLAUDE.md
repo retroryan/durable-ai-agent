@@ -79,11 +79,15 @@ If any task seems to require:
 
 ### Development Setup
 ```bash
-# Install dependencies
+# Install Python dependencies
 poetry install
 
 # Set up environment
 cp .env.example .env
+# Edit .env and add your API keys
+
+# Install frontend dependencies
+cd frontend && npm install && cd ..
 ```
 
 ### Running the Application
@@ -102,10 +106,10 @@ docker-compose --profile forecast up
 # - Temporal UI: http://localhost:8080
 # - Forecast Service: http://localhost:7778/mcp
 
-# Run MCP servers locally with Poetry:
-poetry run poe mcp-forecast      # Forecast server on port 7778
-poetry run poe mcp-historical    # Historical server on port 7779
-poetry run poe mcp-agricultural  # Agricultural server on port 7780
+# Run MCP server locally (unified server for all weather tools):
+poetry run python scripts/run_mcp_server.py      # Runs on port 7778
+# Stop MCP server:
+poetry run python scripts/stop_mcp_server.py
 ```
 
 ## Architecture Overview
@@ -189,12 +193,11 @@ This provides full transparency and debuggability of the AI's reasoning process.
 ### Precision Agriculture Tools
 
 Weather and farming-specific tools in `tools/agriculture/`:
-- **WeatherForecastTool**: Get weather predictions for locations (traditional)
-- **HistoricalWeatherTool**: Access past weather data (traditional)
-- **AgriculturalWeatherTool**: Get farming-specific weather conditions (traditional)
-- **WeatherForecastMCPTool**: Weather predictions via MCP (`get_weather_forecast_mcp`)
-- **HistoricalWeatherMCPTool**: Historical data via MCP (`get_historical_weather_mcp`)
-- **AgriculturalWeatherMCPTool**: Agricultural conditions via MCP (`get_agricultural_conditions_mcp`)
+- **WeatherForecastTool**: Get weather predictions for locations (MCP-enabled)
+- **HistoricalWeatherTool**: Access past weather data (MCP-enabled)
+- **AgriculturalWeatherTool**: Get farming-specific weather conditions (MCP-enabled)
+
+All tools are now MCP-enabled and use the unified MCP server when not in mock mode.
 
 ## Activities and MCP Integration
 
@@ -203,10 +206,8 @@ The project includes several Temporal activities:
 ### Core Activities
 
 1. **react_agent_activity.py** - Reasoning and tool selection using DSPy
-2. **tool_execution_activity.py** - Executes traditional tools and updates trajectory
-3. **mcp_execution_activity.py** - Executes MCP tools via remote servers
-4. **extract_agent_activity.py** - Synthesizes final answers from trajectories
-5. **find_events_activity.py** - Legacy activity for event finding (hardcoded tool)
+2. **tool_execution_activity.py** - Executes tools (both traditional and MCP) and updates trajectory
+3. **extract_agent_activity.py** - Synthesizes final answers from trajectories
 
 ### MCP Utilities (`activities/mcp_utils.py`)
 
@@ -225,11 +226,42 @@ Common utilities extracted for MCP activities:
 
 ## Testing Strategy
 
-- **Unit Tests** (`tests/`) - Test individual components in isolation
-- **Integration Tests** (`integration_tests/`) - Test API endpoints with real Temporal backend
-- **MCP Integration Tests** - Direct Python programs testing MCP client functionality
-- Use markers (`-m api`, `-m workflow`) to run specific test categories
-- Integration tests require services to be running via docker-compose
+### Unit Tests
+```bash
+# Run all unit tests
+poetry run pytest
+
+# Run specific test categories with markers
+poetry run pytest -m api        # API tests only
+poetry run pytest -m workflow   # Workflow tests only
+
+# Run a specific test file
+poetry run pytest tests/workflows/test_agentic_ai_workflow.py
+
+# Run with coverage
+poetry run pytest --cov=. --cov-report=html
+```
+
+### Integration Tests
+```bash
+# Ensure services are running first
+docker-compose up -d
+
+# Run all integration tests (direct Python programs)
+poetry run python integration_tests/run_integration_tests.py
+
+# Run only MCP connection tests
+poetry run python integration_tests/run_integration_tests.py --mcp-only
+
+# Run only API E2E tests  
+poetry run python integration_tests/run_integration_tests.py --api-only
+
+# Run individual integration tests
+poetry run python integration_tests/test_agriculture.py
+poetry run python integration_tests/test_multi_turn.py
+```
+
+**Note**: Integration tests are direct Python programs (not pytest) to maintain simplicity
 
 
 ## Workflow Design
@@ -240,14 +272,103 @@ The `AgenticAIWorkflow` implements the complete conversation flow:
 - Maintains conversation state across multiple interactions
 - Future enhancement: Use a classification agent to automatically select appropriate tool sets
 
+### Key Workflow Patterns
+
+1. **Signal-Driven Messaging**: New messages are sent via `add_message` signal
+2. **Query Pattern**: Workflow state queryable without affecting execution
+3. **Trajectory Management**: Complete reasoning history maintained
+4. **Activity Retry**: Automatic retry with exponential backoff
+5. **Durable State**: All state automatically persisted by Temporal
+
+## Adding New Features
+
+### Adding a New Tool
+
+1. **Create Tool Class** in `tools/your_domain/your_tool.py`:
+```python
+from shared.tool_utils.base_tool import BaseTool
+from pydantic import BaseModel
+
+class YourToolArgs(BaseModel):
+    param1: str
+    param2: int
+
+class YourTool(BaseTool):
+    NAME = "your_tool_name"
+    MODULE = "tools.your_domain.your_tool"
+    
+    description = "Tool description"
+    args_model = YourToolArgs
+    
+    def execute(self, **kwargs) -> str:
+        # Implementation
+        return "result"
+```
+
+2. **Register Tool** in `shared/tool_utils/registry.py`:
+```python
+TOOL_REGISTRY = {
+    "your_domain": [
+        "tools.your_domain.your_tool.YourTool",
+    ]
+}
+```
+
+3. **Add Tests** in `tests/tools/your_domain/test_your_tool.py`
+
+### Adding an MCP Tool
+
+1. **Define Pydantic Model** in `models/mcp_models.py`
+2. **Implement in MCP Server** in `mcp_servers/utils/`
+3. **Create Tool Class** extending `MCPTool`:
+```python
+from shared.tool_utils.mcp_tool import MCPTool
+
+class YourMCPTool(MCPTool):
+    NAME = "your_mcp_tool"
+    is_mcp = True
+    
+    mcp_server_name = "your_server"
+```
+
+## Development Commands
+
+### Code Quality
+```bash
+# Format code
+poetry run poe format
+
+# Check linting and types
+poetry run poe lint
+
+# Check types only
+poetry run poe lint-types
+```
+
+### Running Components Locally
+```bash
+# Run API server locally
+poetry run uvicorn api.main:app --reload --port 8000
+
+# Run worker locally
+poetry run python scripts/run_worker.py
+
+# Run frontend locally
+cd frontend && npm run dev
+
+# Run agentic loop demo
+poetry run python agentic_loop/demo_react_agent.py agriculture
+```
+
 ## Important Notes
 
 - Always ensure docker-compose services are running before integration tests
 - The project uses Poetry for dependency management - avoid pip install
 - Type hints are enforced - run `poetry run poe lint-types` before committing
-- Frontend components (Phase 4) are not yet implemented
-- The trajectory flow has been carefully designed to avoid double-writes (see trajectory-in-depth.md)
+- Frontend is a React application using Vite
+- The trajectory flow has been carefully designed to avoid double-writes
 - Tool registry supports mock results for testing (`mock_results=True` by default)
+- All MCP servers are unified into a single server on port 7778
 
 ## MCP Tool Guidelines
 
@@ -279,6 +400,44 @@ class WeatherForecastTool(MCPTool):
     # get_mcp_config() inherited from MCPTool base class
 ```
 
+
+## Debugging and Troubleshooting
+
+### Viewing Logs
+```bash
+# API logs
+tail -f logs/api_*.log
+
+# Worker logs  
+tail -f logs/worker*.log
+
+# Docker logs
+docker-compose logs -f api
+docker-compose logs -f worker
+docker-compose logs -f mcp-server
+```
+
+### Common Debugging Commands
+```bash
+# Check Temporal workflow status
+curl http://localhost:8000/workflow/{workflow_id}/status
+
+# Query workflow state
+curl http://localhost:8000/workflow/{workflow_id}/query
+
+# View Temporal UI
+open http://localhost:8080
+
+# Test MCP server directly
+curl -X POST http://localhost:7778/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"method": "tools/list"}'
+```
+
+### Environment Variables for Debugging
+- `DEMO_DEBUG=true` - Enable demo debug output
+- `DSPY_DEBUG=true` - Show DSPy prompts/responses
+- `LOG_LEVEL=DEBUG` - Verbose logging
 
 ## Critical Architecture Guidelines
 

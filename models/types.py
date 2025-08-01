@@ -61,6 +61,14 @@ class ReactAgentActivityResult(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Error message if status is 'error'"
     )
+    
+    def __repr__(self) -> str:
+        """Return a concise representation without exposing trajectory details."""
+        return f"ReactAgentActivityResult(status={self.status}, trajectory_count={len(self.trajectories)})"
+    
+    def __str__(self) -> str:
+        """Return a concise string representation."""
+        return self.__repr__()
 
 
 class ToolExecutionRequest(BaseModel):
@@ -70,6 +78,14 @@ class ToolExecutionRequest(BaseModel):
     tool_args: Dict[str, Any] = Field(description="Arguments for the tool")
     trajectories: List[Trajectory] = Field(description="List of trajectory steps")
     current_iteration: int = Field(description="Current iteration number")
+    
+    def __repr__(self) -> str:
+        """Return a concise representation without exposing trajectory details."""
+        return f"ToolExecutionRequest(tool={self.tool_name}, trajectory_count={len(self.trajectories)})"
+    
+    def __str__(self) -> str:
+        """Return a concise string representation."""
+        return self.__repr__()
 
 
 class ToolExecutionResult(BaseModel):
@@ -88,6 +104,15 @@ class ToolExecutionResult(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage in conversation history."""
         return self.model_dump()
+    
+    def __repr__(self) -> str:
+        """Return a concise representation without exposing trajectory details."""
+        trajectory_info = f", trajectory_count={len(self.trajectories)}" if self.trajectories else ""
+        return f"ToolExecutionResult(success={self.success}{trajectory_info})"
+    
+    def __str__(self) -> str:
+        """Return a concise string representation."""
+        return self.__repr__()
 
 class ExtractAgentActivityResult(BaseModel):
     """Result from ExtractAgentActivity activity execution."""
@@ -101,6 +126,14 @@ class ExtractAgentActivityResult(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Error message if status is 'error'"
     )
+    
+    def __repr__(self) -> str:
+        """Return a concise representation without exposing trajectory details."""
+        return f"ExtractAgentActivityResult(status={self.status}, trajectory_count={len(self.trajectories)})"
+    
+    def __str__(self) -> str:
+        """Return a concise string representation."""
+        return self.__repr__()
 
 
 class WorkflowStatus:
@@ -133,6 +166,15 @@ class AgenticAIWorkflowState(BaseModel):
     trajectory_keys: list[str] = Field(default_factory=list, description="List of trajectory keys")
     trajectories: List[Trajectory] = Field(default_factory=list, description="List of trajectory steps")
     trajectory: Optional[dict] = Field(default=None, description="Full trajectory data when requested")
+    
+    def __repr__(self) -> str:
+        """Return a concise representation without exposing trajectory details."""
+        return (f"AgenticAIWorkflowState(workflow_id={self.workflow_id}, status={self.status}, "
+                f"trajectory_count={len(self.trajectories)}, tools_used={self.tools_used})")
+    
+    def __str__(self) -> str:
+        """Return a concise string representation."""
+        return self.__repr__()
 
 
 class MCPConfig(BaseModel):

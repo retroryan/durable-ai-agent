@@ -114,10 +114,8 @@ async def main():
         logging.error(f"Worker failed: {e}", exc_info=True)
         raise
     finally:
-        # Cleanup resources
-        logging.info("Cleaning up MCP connections")
-        if hasattr(tool_execution_activity, 'cleanup'):
-            await tool_execution_activity.cleanup()
+        # Worker cleanup handled by Temporal
+        logging.info("Worker shutting down")
 
 
 if __name__ == "__main__":
