@@ -44,66 +44,50 @@ class AgricultureIntegrationTest:
             if self.detailed:
                 print(".", end="", flush=True)
             
-            # Use /status endpoint like the frontend does
-            status_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/status"
+            # Use /conversation endpoint to check for responses
+            conv_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/conversation"
             )
-            status_data = status_response.json()
+            conv_data = conv_response.json()
             
-            # Check if we have messages using the new API structure
-            message_count = status_data.get("message_count", 0)
-            latest_message = status_data.get("latest_message")
+            # Check if we have completed messages
+            conversation_update = conv_data.get("conversation_update", {})
+            new_messages = conversation_update.get("new_messages", [])
             
-            # If we have a latest_message that's not the default processing message
-            if latest_message and latest_message != "Processing your request...":
-                elapsed = time.time() - start_time
-                
-                # For detailed output, get full conversation to count agent messages
-                if self.detailed or expected_message_count is not None:
-                    try:
-                        # Get conversation state to count messages
-                        conv_state = await client.get_conversation_state(workflow_id)
-                        messages = conv_state.get("messages", [])
-                        agent_message_count = sum(1 for msg in messages if msg.get("agent_message"))
-                        
-                        if expected_message_count is not None:
-                            if agent_message_count >= expected_message_count:
+            # Look for completed agent messages
+            for msg in new_messages:
+                if msg.get("agent_message") and msg.get("is_complete"):
+                    elapsed = time.time() - start_time
+                    
+                    # For detailed output, get full conversation to count agent messages
+                    if self.detailed or expected_message_count is not None:
+                        try:
+                            # Count agent messages
+                            agent_message_count = sum(1 for m in new_messages if m.get("agent_message") and m.get("is_complete"))
+                            
+                            if expected_message_count is not None:
+                                if agent_message_count >= expected_message_count:
+                                    if self.detailed:
+                                        print(f"\n✅ Got agent response #{expected_message_count} after {elapsed:.2f} seconds")
+                                        print(f"   Agent messages: {agent_message_count}")
+                                    else:
+                                        print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                                    return True, elapsed
+                            else:
+                                # Any agent message
                                 if self.detailed:
-                                    print(f"\n✅ Got agent response #{expected_message_count} after {elapsed:.2f} seconds")
-                                    print(f"   Status: {status_data.get('status')}")
-                                    print(f"   Total messages: {message_count}")
-                                    print(f"   Agent messages: {agent_message_count}")
+                                    print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
                                 else:
                                     print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
                                 return True, elapsed
-                        else:
-                            # Any agent message
-                            if self.detailed:
-                                print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
-                                print(f"   Status: {status_data.get('status')}")
-                                print(f"   Total messages: {message_count}")
-                            else:
-                                print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
-                            return True, elapsed
-                    except:
-                        # If getting history fails, fall back to simple check
-                        if expected_message_count is None or message_count >= expected_message_count:
+                        except:
+                            # If getting history fails, fall back to simple check
                             print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
                             return True, elapsed
-                else:
-                    # Simple case - just check for any response
-                    print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
-                    return True, elapsed
-            
-            # Also check last_response for compatibility
-            last_response = status_data.get("last_response", {})
-            if last_response and last_response.get("message") != "Processing your request...":
-                elapsed = time.time() - start_time
-                if self.detailed:
-                    print(f"\n✅ Got agent response after {elapsed:.2f} seconds")
-                else:
-                    print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
-                return True, elapsed
+                    else:
+                        # Simple case - just check for any response
+                        print(f"✅ Got agent response after {(attempt + 1) * 2} seconds")
+                        return True, elapsed
         
         elapsed = time.time() - start_time
         print(f"\n❌ No agent response after {timeout} seconds")
@@ -255,32 +239,23 @@ class AgricultureIntegrationTest:
                 print("📝 Extract Agent")
                 print("─" * 60)
             
-            # Get final status to match frontend behavior
-            final_status_response = await client.client.get(
-                f"{client.base_url}/workflow/{workflow_id}/status"
+            # Get final message from conversation endpoint
+            conv_response = await client.client.get(
+                f"{client.base_url}/workflow/{workflow_id}/conversation"
             )
-            final_status_data = final_status_response.json()
+            conv_data = conv_response.json()
             
-            # Get message from new API structure
-            final_message = final_status_data.get("latest_message", "")
+            # Extract the agent message
+            final_message = ""
+            conversation_update = conv_data.get("conversation_update", {})
+            new_messages = conversation_update.get("new_messages", [])
             
-            # If no latest_message, try last_response for compatibility
-            if not final_message:
-                last_response = final_status_data.get("last_response", {})
-                final_message = last_response.get("message", "")
+            # Find the agent message
+            for msg in new_messages:
+                if msg.get("agent_message") and msg.get("is_complete"):
+                    final_message = msg.get("agent_message", "")
+                    break
             
-            # If still no message, fetch from conversation endpoint
-            if not final_message:
-                try:
-                    conv_state = await client.get_conversation_state(workflow_id)
-                    messages = conv_state.get("messages", [])
-                    # Find last agent message
-                    for msg in reversed(messages):
-                        if msg.get("agent_message"):
-                            final_message = msg.get("agent_message", "")
-                            break
-                except:
-                    pass
             
             if self.detailed:
                 print("✅ Answer extracted successfully")

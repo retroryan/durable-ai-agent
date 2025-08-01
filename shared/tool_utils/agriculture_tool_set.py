@@ -6,6 +6,13 @@ import dspy
 from .base_tool_sets import ToolSet, ToolSetConfig, ToolSetTestCase
 
 
+# NOTE: ReactSignatures in this project follow a specific design pattern:
+# - They only define input fields (e.g., user_query)
+# - The ReactAgent dynamically adds the standard React output fields at runtime:
+#   (next_thought, next_tool_name, next_tool_args)
+# - This separation allows tool sets to provide domain-specific instructions
+#   while the ReactAgent handles the standard React pattern implementation
+
 class AgricultureReactSignature(dspy.Signature):
     """Weather tool execution requirements with coordinate extraction.
 

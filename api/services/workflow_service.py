@@ -167,11 +167,11 @@ class WorkflowService:
             last_response = None
             message_count = 0
             latest_message = None
-            if description.status and description.status.name == "RUNNING":
+            # Query for conversation state on RUNNING or COMPLETED workflows
+            if description.status and description.status.name in ["RUNNING", "COMPLETED"]:
                 try:
                     # Query the workflow for its current conversation state
                     conv_state = await handle.query("get_conversation_state")
-                    logger.info(f"Queried conversation state for {workflow_id}: {conv_state}")
                     
                     # Pydantic data converter handles all serialization
                     
